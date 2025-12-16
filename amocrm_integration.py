@@ -151,11 +151,17 @@ def _clear_tokens(company_id: int) -> None:
         db.session.commit()
 
 
-def _callback_url(company_id: int) -> str:
+def _callback_url(company_id: int = None) -> str:
+    """
+    Генерирует глобальный Callback URL.
+    Аргумент company_id оставлен для совместимости, но не используется в URL.
+    """
     if os.getenv("AMO_REDIRECT_URI"):
         return os.getenv("AMO_REDIRECT_URI")
-    return f"{AMO_REDIRECT_BASE}{url_for('amocrm_company_api.amocrm_callback', company_id=company_id)}"
 
+    # Генерируем ссылку на новый глобальный роут
+    path = url_for('amocrm_company_api.global_amocrm_callback')
+    return f"{AMO_REDIRECT_BASE.rstrip('/')}{path}"
 
 def _partner_company_url(company_id: int) -> str:
     return url_for("amocrm_pages.company_crm_page", company_id=company_id)
@@ -512,13 +518,8 @@ def amocrm_connect(company_id: int):
     state_obj = {"p": payload, "s": _sign_state(payload)}
     state = _b64url(json.dumps(state_obj, separators=(",", ":"), ensure_ascii=False).encode())
 
-    amo_redirect_uri_env = os.getenv("AMO_REDIRECT_URI")
-    if amo_redirect_uri_env:
-        redirect_uri = amo_redirect_uri_env.rstrip("/")
-    else:
-        base = AMO_REDIRECT_BASE.rstrip("/") if AMO_REDIRECT_BASE else ""
-        path = url_for("amocrm_company_api.amocrm_callback", company_id=company_id)
-        redirect_uri = f"{base}{path}"
+    # Используем новую функцию для получения Redirect URI
+    redirect_uri = _callback_url()
 
     params = {
         "client_id": client_id,
@@ -532,8 +533,80 @@ def amocrm_connect(company_id: int):
     return jsonify({"auth_url": auth_url})
 
 
+@bp_amocrm_company_api.route("/common/callback")
+def global_amocrm_callback():
+    """
+    Единая точка входа для всех OAuth-ответов.
+    Не содержит ID компании в URL, извлекает его из параметра state.
+    """
+    code = request.args.get("code")
+    state_from_req = request.args.get("state")
+    referer_domain = request.args.get("referer", "").strip()
+
+    if not code or not state_from_req:
+        return "Invalid OAuth callback: missing code or state", 400
+
+    # 1. Распаковка state и поиск company_id
+    try:
+        raw = base64.urlsafe_b64decode(state_from_req + "==")
+        parsed = json.loads(raw.decode())
+        payload = parsed.get("p", {})
+        sig = parsed.get("s", "")
+
+        # Проверка подписи
+        if _sign_state(payload) != sig:
+            raise ValueError("Invalid state signature")
+
+        # Извлекаем ID компании из state
+        company_id = int(payload.get("cid"))
+
+    except Exception as e:
+        current_app.logger.warning("Invalid AmoCRM callback state: %s", e)
+        return "Bad state or signature validation failed", 400
+
+    # 2. Получение соединения
+    conn = _get_connection_or_none(company_id)
+    if not conn:
+        return f"Connection not configured for company {company_id}", 400
+
+    if referer_domain:
+        conn.base_domain = referer_domain
+        db.session.add(conn)
+        db.session.commit()
+
+    if not conn.base_domain:
+        return "Connection domain not configured", 400
+
+    # 3. Обмен кода на токен
+    redirect_uri = _callback_url()  # Используем тот же общий URL
+    token_url = f"https://{conn.base_domain}/oauth2/access_token"
+
+    data = {
+        "client_id": conn.client_id,
+        "client_secret": conn.client_secret,
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": redirect_uri,
+    }
+
+    try:
+        r = requests.post(token_url, json=data, timeout=15)
+        if r.status_code != 200:
+            current_app.logger.error("AmoCRM token exchange failed: %s %s", r.status_code, r.text)
+            return f"Token exchange failed with status {r.status_code}. Response: {r.text}", 400
+        _save_tokens(conn, r.json())
+    except requests.RequestException as e:
+        current_app.logger.exception("AmoCRM token exchange error for company %d: %s", company_id, e)
+        return "Token request error", 500
+
+    # 4. Редирект обратно на страницу CRM конкретной компании
+    return render_template("oauth_callback_close.html", redirect_url=_partner_company_url(company_id))
+
+
+# Старый роут оставляем для истории или удаляем, если уверены, что никто не использует старые ссылки
 @bp_amocrm_company_api.route("/<int:company_id>/crm/amocrm/callback")
 def amocrm_callback(company_id: int):
+    return redirect(url_for('amocrm_company_api.global_amocrm_callback', **request.args))
     code = request.args.get("code")
     state_from_req = request.args.get("state")
     referer_domain = request.args.get("referer", "").strip()
