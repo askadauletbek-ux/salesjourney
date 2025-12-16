@@ -666,7 +666,8 @@ def amocrm_callback(company_id: int):
 @login_required
 def sync_my_daily_stats():
     """
-    DIAGNOSTIC VERSION: Возвращает отладочную информацию прямо в JSON ответе.
+    ФИНАЛЬНАЯ ВЕРСИЯ (SIPUNI FIX):
+    Считает звонки, сохраненные как Примечания (Notes) типов call_in/call_out.
     """
     user = current_user
     today = datetime.date.today()
@@ -690,113 +691,89 @@ def sync_my_daily_stats():
     if not conn or not conn.access_token:
         return jsonify({"error": "Company integration not active"}), 400
 
-    debug_info = []  # Сюда будем писать ход расследования
-
     try:
-        # Сдвигаем время на 3 часа назад для надежности
+        # 1. Настройка времени (UTC correction)
+        # Берем начало дня по UTC и отнимаем 3 часа для надежности (чтобы захватить утро)
         start_of_day_utc = int(datetime.datetime.combine(today, datetime.time.min).timestamp())
         start_of_day_safe = start_of_day_utc - 10800
 
         my_amo_id = mapping.amocrm_user_id
-        debug_info.append(f"My AmoID: {my_amo_id}")
-        debug_info.append(f"Time from: {start_of_day_safe}")
 
-        # --- ШАГ 1: Сканируем ВСЕ звонки в аккаунте за сегодня ---
-        # Мы специально НЕ фильтруем по юзеру, чтобы увидеть, есть ли звонки вообще
-        # и на кого они записаны.
-        params_all = {
+        # --- 2. СБОР ЗВОНКОВ (Через Events -> Notes) ---
+        calls_count = 0
+        talk_seconds = 0
+
+        # Запрашиваем события типов call_in и call_out
+        params_events = {
             "filter[created_at][from]": start_of_day_safe,
-            "limit": 50,  # Берем последние 50 звонков всей компании
-            "with": "duration"
+            "filter[type][0]": "call_in",
+            "filter[type][1]": "call_out",
+            "limit": 100
+            # Максимум 100 событий за раз (если звонков больше, нужна пагинация, но для дашборда пока хватит)
         }
 
-        r = _amo_get(conn.base_domain, conn.access_token, "/api/v4/calls", params_all)
-        all_calls = []
-        if r.status_code == 200:
-            all_calls = r.json().get("_embedded", {}).get("calls", [])
+        r_ev = _amo_get(conn.base_domain, conn.access_token, "/api/v4/events", params_events)
 
-        debug_info.append(f"Total calls found in account today: {len(all_calls)}")
+        if r_ev.status_code == 200:
+            events = r_ev.json().get("_embedded", {}).get("events", [])
 
-        # Анализируем найденные звонки
-        my_calls_count = 0
-        my_seconds = 0
+            for ev in events:
+                # Проверяем, кто создал событие (кто звонил)
+                creator_id = int(ev.get("created_by") or 0)
 
-        found_sample = False
+                if creator_id == my_amo_id:
+                    # Это наш звонок
+                    calls_count += 1
 
-        for call in all_calls:
-            c_resp = int(call.get("responsible_user_id") or 0)
-            c_creat = int(call.get("created_by") or 0)
-            c_dur = int(call.get("duration") or 0)
+                    # Пытаемся достать длительность
+                    # В событиях Notes данные лежат в value_after -> note -> params -> duration
+                    try:
+                        val_after = ev.get("value_after", [])
+                        # value_after может быть списком или словарем в зависимости от версии API
+                        if isinstance(val_after, list) and len(val_after) > 0:
+                            note_data = val_after[0].get("note", {})
+                            params = note_data.get("params", {})
+                            duration = int(params.get("duration", 0))
+                            talk_seconds += duration
+                    except Exception:
+                        pass  # Если структура другая, просто пропускаем длительность
 
-            # Сохраняем пример первого звонка для отладки
-            if not found_sample:
-                debug_info.append(
-                    f"Sample Call -> ID: {call.get('id')}, Resp: {c_resp}, Creator: {c_creat}, Dur: {c_dur}")
-                found_sample = True
-
-            # Проверка: это наш звонок?
-            if c_resp == my_amo_id or c_creat == my_amo_id:
-                my_calls_count += 1
-                my_seconds += c_dur
-
-        # Если в API Calls пусто, проверяем API Events
-        events_found_count = 0
-        if my_calls_count == 0:
-            debug_info.append("No calls in /api/v4/calls matching user. Checking Events...")
-            # Запрашиваем события типа phone_call
-            params_ev = {
-                "filter[created_at][from]": start_of_day_safe,
-                "filter[type]": "phone_call",
-                "limit": 50
-            }
-            r_ev = _amo_get(conn.base_domain, conn.access_token, "/api/v4/events", params_ev)
-            if r_ev.status_code == 200:
-                events = r_ev.json().get("_embedded", {}).get("events", [])
-                debug_info.append(f"Total phone_call events: {len(events)}")
-                for ev in events:
-                    ev_creator = int(ev.get("created_by") or 0)
-                    if ev_creator == my_amo_id:
-                        events_found_count += 1
-                        my_calls_count += 1
-                        # Пытаемся вытащить длительность из value_after
-                        vals = ev.get("value_after", [])
-                        if vals and isinstance(vals, list):
-                            for v in vals:
-                                note = v.get("note", {})
-                                if isinstance(note, dict):
-                                    my_seconds += int(note.get("duration", 0))
-            else:
-                debug_info.append(f"Events API Error: {r_ev.status_code}")
-
-        # --- СБОР СДЕЛОК (Без изменений) ---
+        # --- 3. СБОР СДЕЛОК (Стандартно) ---
         leads_created = 0
         leads_won = 0
         leads_lost = 0
 
-        # ... (Код сделок оставляем упрощенным для экономии места, он работал) ...
-        # Created
+        # Созданные сделки
         r_cr = _amo_get(conn.base_domain, conn.access_token, "/api/v4/leads", {
-            "filter[created_at][from]": start_of_day_safe, "filter[responsible_user_id]": my_amo_id
+            "filter[created_at][from]": start_of_day_safe,
+            "filter[responsible_user_id]": my_amo_id,
+            "limit": 250
         })
         if r_cr.status_code == 200:
             leads_created = len(r_cr.json().get("_embedded", {}).get("leads", []))
 
-        # Closed
+        # Закрытые сделки
         r_cl = _amo_get(conn.base_domain, conn.access_token, "/api/v4/leads", {
-            "filter[closed_at][from]": start_of_day_safe, "filter[responsible_user_id]": my_amo_id
+            "filter[closed_at][from]": start_of_day_safe,
+            "filter[responsible_user_id]": my_amo_id,
+            "limit": 250
         })
         if r_cl.status_code == 200:
-            for l in r_cl.json().get("_embedded", {}).get("leads", []):
+            closed = r_cl.json().get("_embedded", {}).get("leads", [])
+            for l in closed:
                 sid = int(l.get("status_id", 0))
-                if sid == 142:
+                if sid == WON_STATUS_ID:
                     leads_won += 1
-                elif sid == 143:
+                elif sid == LOST_STATUS_ID:
                     leads_lost += 1
 
-        # Сохранение в БД
+        # --- 4. СОХРАНЕНИЕ ---
         stat_entry = db.session.execute(
             select(AmoCRMUserDailyStat).where(
-                and_(AmoCRMUserDailyStat.user_id == user.id, AmoCRMUserDailyStat.date == today)
+                and_(
+                    AmoCRMUserDailyStat.user_id == user.id,
+                    AmoCRMUserDailyStat.date == today
+                )
             )
         ).scalar_one_or_none()
 
@@ -804,28 +781,25 @@ def sync_my_daily_stats():
             stat_entry = AmoCRMUserDailyStat(user_id=user.id, date=today)
             db.session.add(stat_entry)
 
-        stat_entry.calls_count = my_calls_count
-        stat_entry.talk_seconds = my_seconds
+        stat_entry.calls_count = calls_count
+        stat_entry.talk_seconds = talk_seconds
         stat_entry.leads_created = leads_created
         stat_entry.leads_won = leads_won
         stat_entry.leads_lost = leads_lost
 
         db.session.commit()
 
-        # ВОЗВРАЩАЕМ DEBUG INFO В ПОЛЕ MESSAGE (или отдельным полем, если фронт позволяет)
-        # Я запихну это в консоль браузера через console.log на клиенте, если вы посмотрите ответ.
-
         return jsonify({
             "linked": True,
             "calls": stat_entry.calls_count,
             "minutes": stat_entry.minutes_talked,
             "conversion": stat_entry.conversion,
-            "updated_at_str": "Только что",
-            "debug": debug_info  # <--- ВОТ ЭТО САМОЕ ВАЖНОЕ
+            "updated_at_str": "Только что"
         })
 
     except Exception as e:
-        return jsonify({"error": "Sync failed", "details": str(e), "debug_trace": debug_info}), 500
+        current_app.logger.error(f"Sync error: {e}")
+        return jsonify({"error": "Sync failed", "details": str(e)}), 500
 
 @bp_amocrm_company_api.route("/<int:company_id>/crm/amocrm/sync", methods=["POST"])
 @partner_owns_company_required
