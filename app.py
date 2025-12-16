@@ -4,6 +4,7 @@ import secrets
 from flask import Flask, render_template, redirect, url_for, request, flash, abort
 from flask_login import login_user, logout_user, current_user, login_required
 from sqlalchemy import or_
+from extensions import socketio
 
 # Импорт расширений
 from extensions import db, login_manager
@@ -360,4 +361,5 @@ def create_app():
 
 if __name__ == '__main__':
     app = create_app()
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=True)
+    # Используем socketio.run вместо app.run для поддержки веб-сокетов
+    socketio.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=True)

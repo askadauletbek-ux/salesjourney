@@ -13,6 +13,30 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+
+  <script>
+    // Инициализация сокетов
+    document.addEventListener('DOMContentLoaded', () => {
+      const socket = io();
+
+      // Слушаем события ленты (покупки, победы)
+      socket.on('feed_update', (data) => {
+        // Добавляем в тосты через Alpine Store
+        Alpine.store('toasts').push({
+          title: data.user || 'Событие',
+          text: data.message,
+          icon: 'fa-solid fa-bolt',
+          tone: 'ok'
+        });
+      });
+
+      // Слушаем личные уведомления (если нужно)
+      socket.on('notification', (data) => {
+        Alpine.store('toasts').push(data);
+      });
+    });
+  </script>
 
   <style>
     :root{

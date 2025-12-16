@@ -6,11 +6,45 @@ from flask_login import login_required, current_user
 from sqlalchemy import select, and_
 
 from extensions import db
-from models import User, GamificationProfile, DailyBuff, BuffType
+from models import User, GamificationProfile, DailyBuff, BuffType, Challenge, ChallengeProgress, ChallengeMode
 
 # Создаем Blueprint
 bp_gamification = Blueprint('gamification', __name__, url_prefix='/api/game')
 
+
+def _get_active_squad_goal(user: User):
+    """Вспомогательная функция для расчета общей цели компании"""
+    today = date.today()
+    if not user.company_id:
+        return None
+
+    # Ищем активный челлендж компании
+    challenge = db.session.execute(
+        select(Challenge).where(
+            and_(
+                Challenge.company_id == user.company_id,
+                Challenge.is_active == True,
+                Challenge.start_date <= today,
+                Challenge.end_date >= today
+            )
+        )
+    ).scalars().first()
+
+    if not challenge or challenge.goal_value <= 0:
+        return None
+
+    # Считаем общий прогресс всех участников
+    total_progress = db.session.query(db.func.sum(ChallengeProgress.current_value)) \
+                         .filter(ChallengeProgress.challenge_id == challenge.id).scalar() or 0
+
+    percent = int((total_progress / challenge.goal_value) * 100)
+
+    return {
+        "name": challenge.name,
+        "current": total_progress,
+        "target": challenge.goal_value,
+        "percent": min(100, percent)
+    }
 
 # --- Служебные функции (Logic Layer) ---
 
@@ -145,11 +179,15 @@ def get_status():
     if profile.last_activity_date and profile.last_activity_date < today - timedelta(days=1):
         display_streak = 0
 
+    # Получаем данные Squad Goal
+    squad_data = _get_active_squad_goal(current_user)
+
     return jsonify({
         "coins": profile.coins,
         "xp": profile.xp,
         "streak": display_streak,
-        "level": 1 + (profile.xp // 1000),  # Пример простой формулы уровня
+        "level": 1 + (profile.xp // 1000),
         "today_buff": todays_buff.buff_type.value if todays_buff else None,
-        "last_activity": profile.last_activity_date.isoformat() if profile.last_activity_date else None
+        "last_activity": profile.last_activity_date.isoformat() if profile.last_activity_date else None,
+        "squad": squad_data  # <--- Добавили поле
     })
