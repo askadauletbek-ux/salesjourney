@@ -3,116 +3,6 @@
 
 {% block content %}
 
-<div class="card mb-4 shadow-sm border-0">
-    <div class="card-header bg-white d-flex justify-content-between align-items-center">
-        <h5 class="mb-0 fw-bold text-primary"><i class="fas fa-chart-line me-2"></i>Моя эффективность сегодня</h5>
-        <small class="text-muted" id="last-updated-text">
-            {% if amo_stat.updated_at %}
-                <i class="far fa-clock me-1"></i>Обновлено: {{ amo_stat.updated_at.strftime('%H:%M') }}
-            {% else %}
-                <i class="fas fa-sync fa-spin me-1"></i>Загрузка данных...
-            {% endif %}
-        </small>
-    </div>
-    <div class="card-body">
-        {% if is_amo_linked %}
-            <div class="row text-center">
-                <div class="col-md-4 border-end">
-                    <h3 class="display-6 fw-bold mb-0" id="stat-calls">{{ amo_stat.calls_count }}</h3>
-                    <p class="text-muted small text-uppercase ls-1">Звонков</p>
-                </div>
-                <div class="col-md-4 border-end">
-                    <h3 class="display-6 fw-bold mb-0" id="stat-minutes">{{ amo_stat.minutes_talked }}</h3>
-                    <p class="text-muted small text-uppercase ls-1">Минут разговора</p>
-                </div>
-                <div class="col-md-4">
-                    <h3 class="display-6 fw-bold mb-0 text-success" id="stat-conversion">{{ amo_stat.conversion }}%</h3>
-                    <p class="text-muted small text-uppercase ls-1">Конверсия</p>
-                </div>
-            </div>
-
-            <div id="sync-spinner" class="text-center mt-3" style="display: none;">
-                <span class="badge bg-light text-dark border">
-                    <span class="spinner-border spinner-border-sm text-primary me-1" role="status"></span>
-                    Синхронизация с AmoCRM...
-                </span>
-            </div>
-
-        {% else %}
-            <div class="alert alert-warning d-flex align-items-center mb-0" role="alert">
-                <i class="fas fa-exclamation-triangle fa-2x me-3"></i>
-                <div>
-                    <strong>Нет связи с AmoCRM!</strong>
-                    <p class="mb-0">Пожалуйста, попросите Руководителя связать ваш аккаунт с CRM для отслеживания прогресса.</p>
-                </div>
-            </div>
-        {% endif %}
-    </div>
-</div>
-
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    const isLinked = {{ 'true' if is_amo_linked else 'false' }};
-
-    if (isLinked) {
-        // Запускаем синхронизацию сразу после загрузки страницы
-        syncAmoStats();
-    }
-
-    function syncAmoStats() {
-        const spinner = document.getElementById('sync-spinner');
-        const lastUpdated = document.getElementById('last-updated-text');
-
-        if(spinner) spinner.style.display = 'block';
-
-        fetch('/api/partners/company/my/sync_stats', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.linked) {
-                // Плавное обновление DOM элементов
-                animateValue("stat-calls", parseInt(document.getElementById('stat-calls').innerText), data.calls, 1000);
-                animateValue("stat-minutes", parseFloat(document.getElementById('stat-minutes').innerText), data.minutes, 1000);
-                document.getElementById('stat-conversion').innerText = data.conversion + '%';
-
-                lastUpdated.innerHTML = '<i class="fas fa-check-circle text-success me-1"></i>Обновлено: только что';
-            }
-        })
-        .catch(error => {
-            console.error('Ошибка синхронизации AmoCRM:', error);
-            if(lastUpdated) lastUpdated.innerText = 'Ошибка обновления';
-        })
-        .finally(() => {
-            if(spinner) spinner.style.display = 'none';
-        });
-    }
-
-    // Простая функция анимации чисел
-    function animateValue(id, start, end, duration) {
-        if (start === end) return;
-        const obj = document.getElementById(id);
-        if (!obj) return;
-        let startTimestamp = null;
-        const step = (timestamp) => {
-            if (!startTimestamp) startTimestamp = timestamp;
-            const progress = Math.min((timestamp - startTimestamp) / duration, 1);
-            const val = Math.floor(progress * (end - start) + start);
-            obj.innerHTML = val;
-            if (progress < 1) {
-                window.requestAnimationFrame(step);
-            } else {
-                obj.innerHTML = end; // Финальное точное значение
-            }
-        };
-        window.requestAnimationFrame(step);
-    }
-});
-</script>
-
 <div x-data="gameDashboard()" x-init="initDashboard()" class="relative min-h-[80vh]">
 
   <div x-show="stats.squad" x-transition class="mb-8 p-1 rounded-2xl bg-gradient-to-r from-violet-600/20 to-fuchsia-600/20 border border-violet-500/20">
@@ -150,11 +40,88 @@ document.addEventListener('DOMContentLoaded', function() {
       </p>
     </div>
 
-    <button @click="initDashboard()"
-            class="p-2 rounded-xl hover:bg-white/5 text-[color:var(--sj-muted)] hover:text-white transition-colors"
+    <button @click="forceRefresh()"
+            class="p-2 rounded-xl hover:bg-white/5 text-[color:var(--sj-muted)] hover:text-white transition-colors group"
             title="Обновить данные">
-      <i class="fa-solid fa-rotate-right" :class="{'fa-spin': loading}"></i>
+      <i class="fa-solid fa-rotate-right group-hover:rotate-180 transition-transform duration-500" :class="{'fa-spin': loading || amoLoading}"></i>
     </button>
+  </div>
+
+  <div class="mb-10">
+      <div class="flex items-center justify-between mb-4">
+          <h2 class="text-xl font-bold text-white flex items-center gap-2">
+             <i class="fa-solid fa-chart-line text-blue-400"></i> Моя эффективность
+          </h2>
+          <small class="text-xs font-medium text-[color:var(--sj-muted)] transition-colors"
+                 :class="{'text-blue-400': amoLoading, 'text-emerald-400': !amoLoading && amoLinked}">
+              <span x-html="amoStatusText"></span>
+          </small>
+      </div>
+
+      <template x-if="amoLinked">
+          <div class="grid md:grid-cols-3 gap-6">
+              <div class="relative overflow-hidden rounded-3xl border border-[color:var(--sj-border)] bg-[#101524] p-6 shadow-lg group hover:border-blue-500/30 transition-colors">
+                  <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                      <i class="fa-solid fa-phone text-6xl text-blue-400 transform -rotate-12"></i>
+                  </div>
+                  <div class="relative z-10">
+                      <div class="flex items-center gap-3 mb-2">
+                         <div class="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-400">
+                           <i class="fa-solid fa-phone text-sm"></i>
+                         </div>
+                         <span class="text-sm font-bold uppercase tracking-wider text-[color:var(--sj-muted)]">Звонки</span>
+                      </div>
+                      <div class="text-4xl font-black text-white tracking-tighter" x-text="amoStats.calls">0</div>
+                  </div>
+              </div>
+
+              <div class="relative overflow-hidden rounded-3xl border border-[color:var(--sj-border)] bg-[#101524] p-6 shadow-lg group hover:border-indigo-500/30 transition-colors">
+                  <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                      <i class="fa-solid fa-stopwatch text-6xl text-indigo-400 transform rotate-12"></i>
+                  </div>
+                  <div class="relative z-10">
+                      <div class="flex items-center gap-3 mb-2">
+                         <div class="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-400">
+                           <i class="fa-solid fa-clock text-sm"></i>
+                         </div>
+                         <span class="text-sm font-bold uppercase tracking-wider text-[color:var(--sj-muted)]">Время</span>
+                      </div>
+                      <div class="text-4xl font-black text-white tracking-tighter">
+                          <span x-text="amoStats.minutes">0</span> <span class="text-lg text-[color:var(--sj-muted)] font-normal">мин</span>
+                      </div>
+                  </div>
+              </div>
+
+              <div class="relative overflow-hidden rounded-3xl border border-[color:var(--sj-border)] bg-[#101524] p-6 shadow-lg group hover:border-emerald-500/30 transition-colors">
+                  <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                      <i class="fa-solid fa-percent text-6xl text-emerald-400"></i>
+                  </div>
+                  <div class="relative z-10">
+                      <div class="flex items-center gap-3 mb-2">
+                         <div class="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400">
+                           <i class="fa-solid fa-chart-pie text-sm"></i>
+                         </div>
+                         <span class="text-sm font-bold uppercase tracking-wider text-[color:var(--sj-muted)]">Конверсия</span>
+                      </div>
+                      <div class="text-4xl font-black text-emerald-400 tracking-tighter">
+                          <span x-text="amoStats.conversion">0</span>%
+                      </div>
+                  </div>
+              </div>
+          </div>
+      </template>
+
+      <template x-if="!amoLinked">
+          <div class="p-6 rounded-3xl border border-orange-500/20 bg-orange-500/5 flex items-start sm:items-center gap-4">
+              <div class="w-12 h-12 rounded-xl bg-orange-500/20 flex-shrink-0 flex items-center justify-center text-orange-500 text-xl">
+                  <i class="fa-solid fa-link-slash"></i>
+              </div>
+              <div>
+                  <h3 class="text-lg font-bold text-orange-200">Нет связи с AmoCRM</h3>
+                  <p class="text-sm text-orange-200/60">Попросите руководителя связать ваш аккаунт с CRM системой, чтобы здесь отображалась ваша статистика.</p>
+              </div>
+          </div>
+      </template>
   </div>
 
   <div class="grid md:grid-cols-3 gap-6 mb-10">
@@ -249,7 +216,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   <div x-show="!loading && currentBuff === null"
        x-transition.opacity.duration.500ms
-       class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#070b16]/95 backdrop-blur-md">
+       class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#070b16]/95 backdrop-blur-md" style="display: none;">
 
        <div class="w-full max-w-5xl animate-bounce-in">
            <div class="text-center mb-8">
@@ -302,7 +269,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   <div x-show="loading"
        x-transition.opacity
-       class="absolute inset-0 bg-[#070b16]/50 backdrop-blur-sm z-50 flex items-center justify-center rounded-3xl">
+       class="absolute inset-0 bg-[#070b16]/50 backdrop-blur-sm z-50 flex items-center justify-center rounded-3xl" style="display: none;">
     <div class="flex flex-col items-center">
       <i class="fa-solid fa-circle-notch fa-spin text-4xl text-[color:var(--sj-primary)]"></i>
       <span class="mt-2 text-sm font-semibold text-white">Применяем стратегию...</span>
@@ -316,6 +283,7 @@ document.addEventListener('DOMContentLoaded', function() {
 <script>
   function gameDashboard() {
     return {
+      // Состояние игры
       loading: false,
       currentBuff: null,
       stats: {
@@ -323,26 +291,32 @@ document.addEventListener('DOMContentLoaded', function() {
         xp: {{ user.gamification_profile.xp or 0 }},
         streak: {{ user.gamification_profile.current_streak or 0 }},
         level: {{ (user.gamification_profile.xp // 1000) + 1 }},
-        squad: null // Инициализируем null, загрузится через fetch
-      },
-      initDashboard() {
-        this.fetchStatus();
+        squad: null
       },
 
-      // Определение классов для карточек (активная, неактивная, обычная)
-      getCardClass(type) {
-        if (this.currentBuff === type) {
-          // Выбрана ЭТА стратегия
-          return 'border-yellow-500/50 bg-white/5 scale-[1.02] shadow-[0_0_50px_rgba(234,179,8,0.15)] ring-1 ring-yellow-500/30 cursor-default';
-        } else if (this.currentBuff && this.currentBuff !== type) {
-          // Выбрана ДРУГАЯ стратегия (затемняем эту)
-          return 'border-[color:var(--sj-border)] bg-[#0a0f1c] opacity-40 grayscale cursor-not-allowed';
-        } else {
-          // Ничего не выбрано (доступна для выбора)
-          return 'border-[color:var(--sj-border)] bg-[#101524] hover:bg-[#151b2e] cursor-pointer hover:-translate-y-1';
+      // Состояние AmoCRM
+      amoLinked: {{ 'true' if is_amo_linked else 'false' }},
+      amoLoading: false,
+      amoStats: {
+          calls: {{ amo_stat.calls_count or 0 }},
+          minutes: {{ amo_stat.minutes_talked or 0 }},
+          conversion: {{ amo_stat.conversion or 0 }}
+      },
+      amoStatusText: '{% if amo_stat.updated_at %}<i class="far fa-clock me-1"></i>Обновлено: {{ amo_stat.updated_at.strftime('%H:%M') }}{% else %}Данные не загружены{% endif %}',
+
+      initDashboard() {
+        this.fetchStatus();
+        if (this.amoLinked) {
+            this.syncAmoStats();
         }
       },
 
+      forceRefresh() {
+          this.fetchStatus();
+          if(this.amoLinked) this.syncAmoStats();
+      },
+
+      // --- Логика игры ---
       async fetchStatus() {
         try {
           const res = await fetch('/api/game/status');
@@ -352,10 +326,7 @@ document.addEventListener('DOMContentLoaded', function() {
             this.stats.xp = data.xp;
             this.stats.streak = data.streak;
             this.stats.level = data.level;
-            this.stats.squad = data.squad; // Получаем данные Squad Goal
-
-            // Если бафф не выбран, переменная currentBuff останется null,
-            // и сработает x-show="!currentBuff" на модальном окне
+            this.stats.squad = data.squad;
             this.currentBuff = data.today_buff;
           }
         } catch (e) {
@@ -364,8 +335,7 @@ document.addEventListener('DOMContentLoaded', function() {
       },
 
       async chooseBuff(type) {
-        if (this.currentBuff) return; // Защита от повторного клика
-
+        if (this.currentBuff) return;
         this.loading = true;
         try {
           const response = await fetch('/api/game/buff/choose', {
@@ -373,47 +343,69 @@ document.addEventListener('DOMContentLoaded', function() {
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ buff_type: type })
           });
-
           const result = await response.json();
 
           if (response.ok) {
-            // Успех!
-            this.currentBuff = type; // Мгновенно обновляем UI
-
-            // Вызываем Toast из Alpine Store (определен в base.html)
+            this.currentBuff = type;
             Alpine.store('toasts').push({
               title: 'Стратегия активирована!',
-              text: result.message || `Режим ${type} включен`,
+              text: result.message,
               tone: 'ok',
               icon: 'fa-solid fa-check-double'
             });
-
-            // Обновляем статистику (стрик мог измениться)
             if (result.streak !== undefined) this.stats.streak = result.streak;
-
-            // Небольшая задержка перед обновлением страницы (опционально),
-            // но в данном дизайне мы уже обновили стейт, перезагрузка не обязательна.
-            // Однако, чтобы пересчитать возможные серверные данные, можно обновить фон.
-            setTimeout(() => { this.loading = false; }, 500);
-
           } else {
-            // Ошибка API
-            Alpine.store('toasts').push({
-              title: 'Ошибка',
-              text: result.error || 'Не удалось применить стратегию',
-              tone: 'err'
-            });
-            this.loading = false;
+            Alpine.store('toasts').push({title: 'Ошибка', text: result.error, tone: 'err'});
           }
         } catch (e) {
-          console.error(e);
-          Alpine.store('toasts').push({
-            title: 'Ошибка сети',
-            text: 'Проверьте соединение с интернетом',
-            tone: 'err'
-          });
-          this.loading = false;
+          Alpine.store('toasts').push({title: 'Ошибка сети', text: 'Нет соединения', tone: 'err'});
+        } finally {
+            this.loading = false;
         }
+      },
+
+      // --- Логика AmoCRM ---
+      async syncAmoStats() {
+          this.amoLoading = true;
+          this.amoStatusText = '<i class="fas fa-sync fa-spin me-1"></i>Обновление...';
+
+          try {
+              const response = await fetch('/api/partners/company/my/sync_stats', {
+                  method: 'POST',
+                  headers: {'Content-Type': 'application/json'}
+              });
+              const data = await response.json();
+
+              if (data.linked) {
+                  // Плавная анимация чисел
+                  this.animateValue('calls', this.amoStats.calls, data.calls);
+                  this.animateValue('minutes', this.amoStats.minutes, data.minutes);
+                  this.animateValue('conversion', this.amoStats.conversion, data.conversion);
+
+                  this.amoStatusText = '<i class="fas fa-check-circle me-1"></i>Обновлено: только что';
+              }
+          } catch (error) {
+              console.error('Ошибка AmoCRM:', error);
+              this.amoStatusText = 'Ошибка обновления';
+          } finally {
+              this.amoLoading = false;
+          }
+      },
+
+      animateValue(key, start, end) {
+          if (start === end) return;
+          let current = start;
+          const step = (end - start) / 20; // 20 шагов анимации
+          const timer = setInterval(() => {
+              current += step;
+              if ((step > 0 && current >= end) || (step < 0 && current <= end)) {
+                  this.amoStats[key] = end;
+                  clearInterval(timer);
+              } else {
+                  // Округляем до 1 знака для дробных или до целого
+                  this.amoStats[key] = Number.isInteger(end) ? Math.round(current) : parseFloat(current.toFixed(1));
+              }
+          }, 30);
       }
     }
   }
