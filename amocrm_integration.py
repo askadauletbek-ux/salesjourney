@@ -667,6 +667,7 @@ def amocrm_callback(company_id: int):
 def sync_my_daily_stats():
     """
     Эндпоинт для обновления личной статистики пользователя за сегодня.
+    Использует расширенную логику поиска звонков (по ответственному И по создателю).
     """
     user = current_user
     today = datetime.date.today()
@@ -691,41 +692,58 @@ def sync_my_daily_stats():
         return jsonify({"error": "Company integration not active"}), 400
 
     try:
+        # Начало дня (Unix Timestamp)
         start_of_day = int(datetime.datetime.combine(today, datetime.time.min).timestamp())
+        amo_uid = mapping.amocrm_user_id
 
-        # 1. Звонки за сегодня
-        calls_count = 0
-        talk_seconds = 0
-        params = {
-            "filter[created_at][from]": start_of_day,
-            "filter[responsible_user_id]": mapping.amocrm_user_id,
-            "limit": 250
-        }
-        r_calls = _amo_get(conn.base_domain, conn.access_token, "/api/v4/calls", params)
-        if r_calls.status_code == 200:
-            calls_data = r_calls.json().get("_embedded", {}).get("calls", [])
-            calls_count = len(calls_data)
-            talk_seconds = sum(c.get("duration", 0) for c in calls_data)
+        # --- 1. СБОР ЗВОНКОВ (Расширенный) ---
+        # Некоторые интеграции ставят менеджера в responsible_user_id, другие в created_by.
+        # Запрашиваем оба варианта и объединяем по ID звонка, чтобы исключить дубли.
 
-        # 2. Сделки (Created, Won, Lost)
+        unique_calls = {}  # словарь {call_id: call_data}
+
+        def fetch_calls(filter_param, filter_val):
+            params = {
+                "filter[created_at][from]": start_of_day,
+                f"filter[{filter_param}]": filter_val,
+                "limit": 250,
+                "with": "duration"  # Явно запрашиваем поле, хотя оно обычно стандартное
+            }
+            r = _amo_get(conn.base_domain, conn.access_token, "/api/v4/calls", params)
+            if r.status_code == 200:
+                return r.json().get("_embedded", {}).get("calls", [])
+            return []
+
+        # Запрос 1: Где пользователь ответственный
+        for call in fetch_calls("responsible_user_id", amo_uid):
+            unique_calls[call["id"]] = call
+
+        # Запрос 2: Где пользователь создатель (часто бывает при исходящих)
+        for call in fetch_calls("created_by", amo_uid):
+            unique_calls[call["id"]] = call
+
+        calls_count = len(unique_calls)
+        talk_seconds = sum(int(c.get("duration", 0)) for c in unique_calls.values())
+
+        # --- 2. СБОР СДЕЛОК ---
         leads_created = 0
         leads_won = 0
         leads_lost = 0
 
-        # Созданные
+        # Созданные (Created Today)
         params_created = {
             "filter[created_at][from]": start_of_day,
-            "filter[responsible_user_id]": mapping.amocrm_user_id,
+            "filter[responsible_user_id]": amo_uid,
             "limit": 250
         }
         r_created = _amo_get(conn.base_domain, conn.access_token, "/api/v4/leads", params_created)
         if r_created.status_code == 200:
             leads_created = len(r_created.json().get("_embedded", {}).get("leads", []))
 
-        # Закрытые (Won/Lost)
+        # Закрытые (Won/Lost Today)
         params_closed = {
             "filter[closed_at][from]": start_of_day,
-            "filter[responsible_user_id]": mapping.amocrm_user_id,
+            "filter[responsible_user_id]": amo_uid,
             "limit": 250
         }
         r_closed = _amo_get(conn.base_domain, conn.access_token, "/api/v4/leads", params_closed)
@@ -738,7 +756,7 @@ def sync_my_daily_stats():
                 elif sid == LOST_STATUS_ID:
                     leads_lost += 1
 
-        # 3. Сохранение в БД
+        # 3. Обновляем БД
         stat_entry = db.session.execute(
             select(AmoCRMUserDailyStat).where(
                 and_(
@@ -770,7 +788,9 @@ def sync_my_daily_stats():
 
     except Exception as e:
         current_app.logger.error(f"Failed to sync user stats: {e}")
-        return jsonify({"error": "Sync failed"}), 500
+        # Возвращаем JSON с ошибкой, но кодом 200, чтобы фронтенд мог обработать сообщение,
+        # или 500, если критично.
+        return jsonify({"error": "Sync logic failed", "details": str(e)}), 500
 
 @bp_amocrm_company_api.route("/<int:company_id>/crm/amocrm/sync", methods=["POST"])
 @partner_owns_company_required
