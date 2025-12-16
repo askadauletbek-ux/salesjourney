@@ -2,6 +2,117 @@
 {% set title = "Dashboard — Sales Journey" %}
 
 {% block content %}
+
+<div class="card mb-4 shadow-sm border-0">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 fw-bold text-primary"><i class="fas fa-chart-line me-2"></i>Моя эффективность сегодня</h5>
+        <small class="text-muted" id="last-updated-text">
+            {% if amo_stat.updated_at %}
+                <i class="far fa-clock me-1"></i>Обновлено: {{ amo_stat.updated_at.strftime('%H:%M') }}
+            {% else %}
+                <i class="fas fa-sync fa-spin me-1"></i>Загрузка данных...
+            {% endif %}
+        </small>
+    </div>
+    <div class="card-body">
+        {% if is_amo_linked %}
+            <div class="row text-center">
+                <div class="col-md-4 border-end">
+                    <h3 class="display-6 fw-bold mb-0" id="stat-calls">{{ amo_stat.calls_count }}</h3>
+                    <p class="text-muted small text-uppercase ls-1">Звонков</p>
+                </div>
+                <div class="col-md-4 border-end">
+                    <h3 class="display-6 fw-bold mb-0" id="stat-minutes">{{ amo_stat.minutes_talked }}</h3>
+                    <p class="text-muted small text-uppercase ls-1">Минут разговора</p>
+                </div>
+                <div class="col-md-4">
+                    <h3 class="display-6 fw-bold mb-0 text-success" id="stat-conversion">{{ amo_stat.conversion }}%</h3>
+                    <p class="text-muted small text-uppercase ls-1">Конверсия</p>
+                </div>
+            </div>
+
+            <div id="sync-spinner" class="text-center mt-3" style="display: none;">
+                <span class="badge bg-light text-dark border">
+                    <span class="spinner-border spinner-border-sm text-primary me-1" role="status"></span>
+                    Синхронизация с AmoCRM...
+                </span>
+            </div>
+
+        {% else %}
+            <div class="alert alert-warning d-flex align-items-center mb-0" role="alert">
+                <i class="fas fa-exclamation-triangle fa-2x me-3"></i>
+                <div>
+                    <strong>Нет связи с AmoCRM!</strong>
+                    <p class="mb-0">Пожалуйста, попросите Руководителя связать ваш аккаунт с CRM для отслеживания прогресса.</p>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const isLinked = {{ 'true' if is_amo_linked else 'false' }};
+
+    if (isLinked) {
+        // Запускаем синхронизацию сразу после загрузки страницы
+        syncAmoStats();
+    }
+
+    function syncAmoStats() {
+        const spinner = document.getElementById('sync-spinner');
+        const lastUpdated = document.getElementById('last-updated-text');
+
+        if(spinner) spinner.style.display = 'block';
+
+        fetch('/api/partners/company/my/sync_stats', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.linked) {
+                // Плавное обновление DOM элементов
+                animateValue("stat-calls", parseInt(document.getElementById('stat-calls').innerText), data.calls, 1000);
+                animateValue("stat-minutes", parseFloat(document.getElementById('stat-minutes').innerText), data.minutes, 1000);
+                document.getElementById('stat-conversion').innerText = data.conversion + '%';
+
+                lastUpdated.innerHTML = '<i class="fas fa-check-circle text-success me-1"></i>Обновлено: только что';
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка синхронизации AmoCRM:', error);
+            if(lastUpdated) lastUpdated.innerText = 'Ошибка обновления';
+        })
+        .finally(() => {
+            if(spinner) spinner.style.display = 'none';
+        });
+    }
+
+    // Простая функция анимации чисел
+    function animateValue(id, start, end, duration) {
+        if (start === end) return;
+        const obj = document.getElementById(id);
+        if (!obj) return;
+        let startTimestamp = null;
+        const step = (timestamp) => {
+            if (!startTimestamp) startTimestamp = timestamp;
+            const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+            const val = Math.floor(progress * (end - start) + start);
+            obj.innerHTML = val;
+            if (progress < 1) {
+                window.requestAnimationFrame(step);
+            } else {
+                obj.innerHTML = end; // Финальное точное значение
+            }
+        };
+        window.requestAnimationFrame(step);
+    }
+});
+</script>
+
 <div x-data="gameDashboard()" x-init="initDashboard()" class="relative min-h-[80vh]">
 
   <div x-show="stats.squad" x-transition class="mb-8 p-1 rounded-2xl bg-gradient-to-r from-violet-600/20 to-fuchsia-600/20 border border-violet-500/20">

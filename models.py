@@ -248,3 +248,31 @@ class FeedEvent(db.Model):
     meta_data: Mapped[dict] = mapped_column(db.JSON, nullable=True, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     user: Mapped["User"] = relationship()
+
+
+class AmoCRMUserDailyStat(db.Model):
+    __tablename__ = 'amocrm_user_daily_stats'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id'), nullable=False)
+    date: Mapped[date] = mapped_column(Date, default=date.today, nullable=False)
+
+    calls_count: Mapped[int] = mapped_column(Integer, default=0)
+    talk_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    leads_created: Mapped[int] = mapped_column(Integer, default=0)
+    leads_won: Mapped[int] = mapped_column(Integer, default=0)
+    leads_lost: Mapped[int] = mapped_column(Integer, default=0)
+
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(backref="daily_stats")
+
+    @property
+    def conversion(self):
+        if self.leads_created > 0:
+            return round((self.leads_won / self.leads_created) * 100, 1)
+        return 0.0
+
+    @property
+    def minutes_talked(self):
+        return round(self.talk_seconds / 60, 1)

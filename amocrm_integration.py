@@ -36,7 +36,7 @@ except ImportError:
 
 from extensions import db
 # Обновлен список импортируемых моделей
-from models import Company, AmoCRMConnection, AmoCRMUserMap, PartnerUser, User, Challenge, ChallengeProgress, ChallengeGoalType, ChallengeMode, UserRole
+from models import Company, AmoCRMConnection, AmoCRMUserMap, PartnerUser, User, Challenge, ChallengeProgress, ChallengeGoalType, ChallengeMode, UserRole, AmoCRMUserDailyStat
 # --- Blueprints ---
 bp_amocrm_company_api = Blueprint("amocrm_company_api", __name__, url_prefix="/api/partners/company")
 bp_amocrm_pages = Blueprint("amocrm_pages", __name__, url_prefix="/partner/company")
@@ -661,6 +661,116 @@ def amocrm_callback(company_id: int):
 
     return render_template("oauth_callback_close.html", redirect_url=_partner_company_url(company_id))
 
+
+@bp_amocrm_company_api.route("/my/sync_stats", methods=["POST"])
+@login_required
+def sync_my_daily_stats():
+    """
+    Эндпоинт для обновления личной статистики пользователя за сегодня.
+    """
+    user = current_user
+    today = datetime.date.today()
+
+    if not user.company_id:
+        return jsonify({"error": "No company"}), 400
+
+    mapping = db.session.execute(
+        select(AmoCRMUserMap).where(
+            and_(
+                AmoCRMUserMap.platform_user_id == user.id,
+                AmoCRMUserMap.company_id == user.company_id
+            )
+        )
+    ).scalar_one_or_none()
+
+    if not mapping:
+        return jsonify({"linked": False, "message": "Account not linked"}), 200
+
+    conn = _refresh_if_needed(user.company_id)
+    if not conn or not conn.access_token:
+        return jsonify({"error": "Company integration not active"}), 400
+
+    try:
+        start_of_day = int(datetime.datetime.combine(today, datetime.time.min).timestamp())
+
+        # 1. Звонки за сегодня
+        calls_count = 0
+        talk_seconds = 0
+        params = {
+            "filter[created_at][from]": start_of_day,
+            "filter[responsible_user_id]": mapping.amocrm_user_id,
+            "limit": 250
+        }
+        r_calls = _amo_get(conn.base_domain, conn.access_token, "/api/v4/calls", params)
+        if r_calls.status_code == 200:
+            calls_data = r_calls.json().get("_embedded", {}).get("calls", [])
+            calls_count = len(calls_data)
+            talk_seconds = sum(c.get("duration", 0) for c in calls_data)
+
+        # 2. Сделки (Created, Won, Lost)
+        leads_created = 0
+        leads_won = 0
+        leads_lost = 0
+
+        # Созданные
+        params_created = {
+            "filter[created_at][from]": start_of_day,
+            "filter[responsible_user_id]": mapping.amocrm_user_id,
+            "limit": 250
+        }
+        r_created = _amo_get(conn.base_domain, conn.access_token, "/api/v4/leads", params_created)
+        if r_created.status_code == 200:
+            leads_created = len(r_created.json().get("_embedded", {}).get("leads", []))
+
+        # Закрытые (Won/Lost)
+        params_closed = {
+            "filter[closed_at][from]": start_of_day,
+            "filter[responsible_user_id]": mapping.amocrm_user_id,
+            "limit": 250
+        }
+        r_closed = _amo_get(conn.base_domain, conn.access_token, "/api/v4/leads", params_closed)
+        if r_closed.status_code == 200:
+            closed_leads = r_closed.json().get("_embedded", {}).get("leads", [])
+            for lead in closed_leads:
+                sid = int(lead.get("status_id", 0))
+                if sid == WON_STATUS_ID:
+                    leads_won += 1
+                elif sid == LOST_STATUS_ID:
+                    leads_lost += 1
+
+        # 3. Сохранение в БД
+        stat_entry = db.session.execute(
+            select(AmoCRMUserDailyStat).where(
+                and_(
+                    AmoCRMUserDailyStat.user_id == user.id,
+                    AmoCRMUserDailyStat.date == today
+                )
+            )
+        ).scalar_one_or_none()
+
+        if not stat_entry:
+            stat_entry = AmoCRMUserDailyStat(user_id=user.id, date=today)
+            db.session.add(stat_entry)
+
+        stat_entry.calls_count = calls_count
+        stat_entry.talk_seconds = talk_seconds
+        stat_entry.leads_created = leads_created
+        stat_entry.leads_won = leads_won
+        stat_entry.leads_lost = leads_lost
+
+        db.session.commit()
+
+        return jsonify({
+            "linked": True,
+            "calls": stat_entry.calls_count,
+            "minutes": stat_entry.minutes_talked,
+            "conversion": stat_entry.conversion,
+            "updated_at_str": "Только что"
+        })
+
+    except Exception as e:
+        current_app.logger.error(f"Failed to sync user stats: {e}")
+        return jsonify({"error": "Sync failed"}), 500
 
 @bp_amocrm_company_api.route("/<int:company_id>/crm/amocrm/sync", methods=["POST"])
 @partner_owns_company_required

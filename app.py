@@ -10,7 +10,7 @@ from extensions import socketio
 from extensions import db, login_manager
 
 # Импорт моделей
-from models import User, GamificationProfile, ShopItem, ShopItemType, UserRole, Company, PartnerUser
+from models import User, GamificationProfile, ShopItem, ShopItemType, UserRole, Company, PartnerUser, AmoCRMUserDailyStat, AmoCRMUserMap
 
 # Импорт модулей (Blueprints)
 from amocrm_integration import bp_amocrm_company_api, bp_amocrm_pages
@@ -197,7 +197,39 @@ def create_app():
             db.session.add(profile)
             db.session.commit()
 
-        return render_template('dashboard.html', user=current_user)
+        # --- Сбор статистики AmoCRM ---
+        today = date.today()
+        is_amo_linked = False
+        if current_user.company_id:
+            mapping = db.session.execute(
+                select(AmoCRMUserMap).where(
+                    and_(
+                        AmoCRMUserMap.platform_user_id == current_user.id,
+                        AmoCRMUserMap.company_id == current_user.company_id
+                    )
+                )
+            ).scalar_one_or_none()
+            if mapping:
+                is_amo_linked = True
+
+        daily_stat = db.session.execute(
+            select(AmoCRMUserDailyStat).where(
+                and_(
+                    AmoCRMUserDailyStat.user_id == current_user.id,
+                    AmoCRMUserDailyStat.date == today
+                )
+            )
+        ).scalar_one_or_none()
+
+        if not daily_stat:
+            # Пустышка для корректного отображения
+            daily_stat = AmoCRMUserDailyStat(calls_count=0, talk_seconds=0, leads_created=0, leads_won=0,
+                                             updated_at=None)
+
+        return render_template('dashboard.html',
+                               user=current_user,
+                               amo_stat=daily_stat,
+                               is_amo_linked=is_amo_linked)
 
     # ==========================
     # PARTNER ROUTES
