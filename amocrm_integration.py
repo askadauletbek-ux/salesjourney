@@ -1057,16 +1057,21 @@ def company_crm_dashboard(company_id: int):
 @partner_owns_company_required
 def debug_inspect_entity(company_id: int):
     """
-    РЕНТГЕН СУЩНОСТИ:
-    Выгружает вообще всё (звонки, примечания, события), что связано с указанным ID.
-    Использование: /api/partners/company/{id_компании}/debug/inspect_entity?entity_id={ID_СДЕЛКИ}&type=leads
+    ПОЛНЫЙ РЕНТГЕН СУЩНОСТИ:
+    Выгружает Calls, Notes и Events, привязанные к ID сделки или контакта.
+    Позволяет увидеть, в каком именно поле SIPUNI прячет данные о звонках.
+
+    Использование:
+    /api/partners/company/{id}/debug/inspect_entity?entity_id={ID_СДЕЛКИ}&type=leads
+    или
+    /api/partners/company/{id}/debug/inspect_entity?entity_id={ID_КОНТАКТА}&type=contacts
     """
     entity_id = request.args.get('entity_id')
-    # type может быть: leads (сделки), contacts (контакты), companies (компании)
+    # type может быть: leads (сделки), contacts (контакты)
     entity_type = request.args.get('type', 'leads')
 
     if not entity_id:
-        return jsonify({"error": "Нужен параметр ?entity_id=..."}), 400
+        return jsonify({"error": "Укажите ?entity_id=..."}), 400
 
     conn = _refresh_if_needed(company_id)
     if not conn or not conn.access_token:
@@ -1074,14 +1079,13 @@ def debug_inspect_entity(company_id: int):
 
     report = {
         "target": f"{entity_type} #{entity_id}",
-        "raw_calls": [],
-        "raw_notes": [],
-        "raw_events": []
+        "raw_calls_api": [],  # Стандартные звонки
+        "raw_notes_api": [],  # Примечания (ОЧЕНЬ ВАЖНО для SIPUNI)
+        "raw_events_api": []  # События таймлайна
     }
 
     try:
-        # 1. Ищем в API Звонков (если привязаны к сущности)
-        # Многие интеграции не привязывают звонки к сущности в API v4, но проверим.
+        # 1. API CALLS (Звонки, привязанные к сущности)
         params_calls = {
             "filter[entity_id]": entity_id,
             "filter[entity_type]": entity_type,
@@ -1089,42 +1093,29 @@ def debug_inspect_entity(company_id: int):
         }
         r_calls = _amo_get(conn.base_domain, conn.access_token, "/api/v4/calls", params_calls)
         if r_calls.status_code == 200:
-            report["raw_calls"] = r_calls.json().get("_embedded", {}).get("calls", [])
+            report["raw_calls_api"] = r_calls.json().get("_embedded", {}).get("calls", [])
 
-        # 2. Ищем в API Примечаний (Notes) - САМОЕ ВАЖНОЕ ДЛЯ SIPUNI
-        # Часто звонки лежат здесь с note_type: call_in / call_out
+        # 2. API NOTES (Примечания - сюда часто пишут интеграции)
+        # Получаем список примечаний конкретной сущности
         url_notes = f"/api/v4/{entity_type}/{entity_id}/notes"
-        r_notes = _amo_get(conn.base_domain, conn.access_token, url_notes, {"limit": 50})
+        params_notes = {"limit": 50, "order[created_at]": "desc"}
+        r_notes = _amo_get(conn.base_domain, conn.access_token, url_notes, params_notes)
+
         if r_notes.status_code == 200:
             notes = r_notes.json().get("_embedded", {}).get("notes", [])
-            # Фильтруем только похожие на звонки, чтобы не мусорить
-            relevant_notes = []
-            for n in notes:
-                # Типы примечаний звонков: 10, 11, 12, 13 или строковые call_in/out
-                n_type = n.get("note_type")
-                params = n.get("params", {})
-                relevant_notes.append({
-                    "id": n.get("id"),
-                    "note_type": n_type,
-                    "created_at": n.get("created_at"),
-                    "created_by": n.get("created_by"),
-                    "params": params  # Тут лежит длительность и ссылка
-                })
-            report["raw_notes"] = relevant_notes
+            # Сохраняем как есть, чтобы вы увидели структуру
+            report["raw_notes_api"] = notes
 
-        # 3. Ищем в API Событий (Timeline Events)
+        # 3. API EVENTS (События таймлайна)
         params_events = {
             "filter[entity_id]": entity_id,
             "filter[entity_type]": entity_type,
-            "limit": 50
+            "limit": 50,
+            "order[created_at]": "desc"
         }
         r_events = _amo_get(conn.base_domain, conn.access_token, "/api/v4/events", params_events)
         if r_events.status_code == 200:
-            events = r_events.json().get("_embedded", {}).get("events", [])
-            # Берем только события звонков
-            phone_events = [e for e in events if
-                            e.get("type") in ['phone_call', 'outgoing_call', 'incoming_call', 'call_in', 'call_out']]
-            report["raw_events"] = phone_events
+            report["raw_events_api"] = r_events.json().get("_embedded", {}).get("events", [])
 
         return jsonify(report)
 
