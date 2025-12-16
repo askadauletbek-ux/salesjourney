@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% if title %}{{ title }}{% else %}Sales Journey | RPG{% endif %}</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { darkMode: 'class' }
+  </script>
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+  <style>
+    :root{
+      --sj-bg:#070b16;
+      --sj-elev:rgba(255,255,255,.045);
+      --sj-card:rgba(255,255,255,.06);
+      --sj-border:rgba(148,163,184,.16);
+      --sj-text:#e5e7eb;
+      --sj-muted:rgba(148,163,184,.88);
+      --sj-primary:#7c3aed;
+      --sj-cyan:#22d3ee;
+      --sj-amber:#fbbf24;
+      --sj-rose:#fb7185;
+      --sj-emerald:#34d399;
+      --sj-shadow: 0 20px 70px rgba(0,0,0,.45);
+    }
+    [x-cloak]{display:none!important}
+  </style>
+
+  {% block head %}{% endblock %}
+</head>
+
+<body
+  x-data
+  class="min-h-screen text-[color:var(--sj-text)]
+         bg-[color:var(--sj-bg)]
+         bg-[radial-gradient(circle_at_top_right,rgba(124,58,237,.20),transparent_40%),radial-gradient(circle_at_bottom_left,rgba(34,211,238,.14),transparent_55%)]
+         selection:bg-violet-500/30"
+>
+
+  <div x-cloak x-data class="fixed top-4 right-4 z-[999] w-[min(420px,calc(100vw-2rem))] space-y-2"
+       x-init="
+        Alpine.store('toasts', {
+          items: [],
+          push(t){
+            const id = crypto?.randomUUID ? crypto.randomUUID() : String(Date.now()+Math.random());
+            const item = { id, title: t.title||'OK', text: t.text||'', icon: t.icon||'fa-solid fa-circle-check', tone: t.tone||'ok' };
+            this.items.unshift(item);
+            setTimeout(()=>{ this.items = this.items.filter(x=>x.id!==id); }, 4200);
+          }
+        });
+       ">
+    <template x-for="t in Alpine.store('toasts').items" :key="t.id">
+      <div class="rounded-2xl border border-[color:var(--sj-border)] bg-black/35 backdrop-blur p-3 shadow-[var(--sj-shadow)]">
+        <div class="flex items-start gap-3">
+          <div class="w-10 h-10 rounded-2xl bg-white/5 border border-[color:var(--sj-border)] flex items-center justify-center">
+            <i :class="t.icon" class="text-[color:var(--sj-emerald)]" x-show="t.tone==='ok'"></i>
+            <i :class="t.icon" class="text-[color:var(--sj-rose)]" x-show="t.tone==='err'"></i>
+            <i :class="t.icon" class="text-[color:var(--sj-amber)]" x-show="t.tone==='warn'"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="font-semibold leading-tight" x-text="t.title"></div>
+            <div class="text-sm text-[color:var(--sj-muted)] mt-0.5 break-words" x-text="t.text"></div>
+          </div>
+          <button class="w-9 h-9 rounded-2xl bg-white/5 border border-[color:var(--sj-border)] hover:bg-white/10"
+                  @click="Alpine.store('toasts').items = Alpine.store('toasts').items.filter(x=>x.id!==t.id)">
+            ✕
+          </button>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <header class="sticky top-0 z-40 border-b border-[color:var(--sj-border)] bg-black/25 backdrop-blur">
+    <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+      <a href="/" class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-2xl bg-white/5 border border-[color:var(--sj-border)] grid place-items-center">
+          <i class="fa-solid fa-dragon text-[color:var(--sj-amber)]"></i>
+        </div>
+        <div class="leading-tight">
+          <div class="font-extrabold tracking-tight">Sales Journey</div>
+          <div class="text-xs text-[color:var(--sj-muted)] -mt-0.5">RPG-геймификация отдела продаж</div>
+        </div>
+      </a>
+
+      <div class="flex items-center gap-2">
+        {% if current_user.is_authenticated %}
+          {% if current_user.gamification_profile %}
+          <div class="hidden sm:flex items-center gap-2 px-3 py-2 rounded-2xl bg-white/5 border border-[color:var(--sj-border)]">
+            <i class="fa-solid fa-coins text-[color:var(--sj-amber)]"></i>
+            <span class="font-semibold">{{ current_user.gamification_profile.coins }}</span>
+          </div>
+          {% endif %}
+
+          {% if current_user.role and current_user.role.value in ['PARTNER','COMPANY_OWNER'] %}
+          <a href="/partner/companies"
+             class="px-3 py-2 rounded-2xl bg-white/5 border border-[color:var(--sj-border)] hover:bg-white/10">
+            <i class="fa-solid fa-building mr-2 text-white/60"></i>Компании
+          </a>
+          {% endif %}
+
+          {% if current_user.role and current_user.role.value == 'SUPER_ADMIN' %}
+          <a href="{{ url_for('super_admin_panel') }}"
+             class="px-3 py-2 rounded-2xl bg-white/5 border border-[color:var(--sj-border)] hover:bg-white/10">
+            <i class="fa-solid fa-crown mr-2 text-white/60"></i>Админка
+          </a>
+          {% endif %}
+
+          <div class="relative" x-data="{open:false}">
+            <button @click="open=!open"
+                    class="px-3 py-2 rounded-2xl bg-white/5 border border-[color:var(--sj-border)] hover:bg-white/10 flex items-center gap-2">
+              <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-600/60 to-cyan-400/30 border border-white/10 grid place-items-center font-bold">
+                {{ (current_user.username or current_user.email or 'U')[:1].upper() }}
+              </div>
+              <div class="hidden sm:block text-left">
+                <div class="text-sm font-semibold">{{ current_user.username or current_user.email }}</div>
+                <div class="text-xs text-[color:var(--sj-muted)]">{{ current_user.role.value if current_user.role else '' }}</div>
+              </div>
+              <i class="fa-solid fa-chevron-down text-xs text-white/60"></i>
+            </button>
+
+            <div x-show="open" @click.outside="open=false" x-transition
+                 class="absolute right-0 mt-2 w-56 rounded-2xl border border-[color:var(--sj-border)] bg-[#070b16] shadow-[var(--sj-shadow)] p-2">
+              <a href="/logout" class="block px-3 py-2 rounded-xl hover:bg-white/10">
+                <i class="fa-solid fa-right-from-bracket mr-2 text-white/60"></i>Выйти
+              </a>
+            </div>
+          </div>
+        {% else %}
+          <a href="/login"
+             class="px-4 py-2 rounded-2xl bg-white/5 border border-[color:var(--sj-border)] hover:bg-white/10 font-semibold">
+            Вход
+          </a>
+        {% endif %}
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-4 py-6">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <div class="space-y-2 mb-4">
+        {% for category, msg in messages %}
+          <div class="rounded-2xl border border-[color:var(--sj-border)] bg-white/5 p-4 flex items-start gap-3">
+            <div class="w-10 h-10 rounded-2xl bg-white/5 border border-[color:var(--sj-border)] grid place-items-center">
+              {% if category == 'success' %}
+              <i class="fa-solid fa-circle-check text-[color:var(--sj-emerald)]"></i>
+              {% elif category == 'error' %}
+              <i class="fa-solid fa-triangle-exclamation text-[color:var(--sj-rose)]"></i>
+              {% else %}
+              <i class="fa-solid fa-circle-info text-[color:var(--sj-amber)]"></i>
+              {% endif %}
+            </div>
+            <div class="text-sm text-white/90">{{ msg }}</div>
+          </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  {% if current_user.is_authenticated and current_user.must_change_password %}
+  <div class="fixed inset-0 z-[1000] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+    <div class="w-full max-w-md p-8 rounded-3xl border border-[color:var(--sj-border)] bg-[#111827] shadow-2xl relative animate-bounce-in">
+
+      <div class="text-center mb-6">
+        <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-amber-500/10 text-[color:var(--sj-amber)] mb-4 border border-amber-500/20 shadow-[0_0_20px_rgba(251,191,36,0.2)]">
+          <i class="fa-solid fa-shield-halved text-2xl"></i>
+        </div>
+        <h2 class="text-2xl font-bold text-white tracking-tight">Смена пароля</h2>
+        <p class="text-[color:var(--sj-muted)] mt-2 text-sm leading-relaxed">
+          Вы вошли с временным паролем. В целях безопасности необходимо установить новый постоянный пароль.
+        </p>
+      </div>
+
+      <form action="{{ url_for('force_password_change') }}" method="POST" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-[color:var(--sj-muted)] uppercase tracking-wider mb-1 ml-1">Новый пароль</label>
+          <input type="password" name="password" required minlength="8"
+                 class="w-full px-4 py-3 bg-black/30 border border-[color:var(--sj-border)] rounded-xl text-white placeholder-white/20 focus:outline-none focus:border-[color:var(--sj-primary)] focus:bg-white/5 transition-all"
+                 placeholder="Минимум 8 символов">
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-[color:var(--sj-muted)] uppercase tracking-wider mb-1 ml-1">Повторите пароль</label>
+          <input type="password" name="password2" required minlength="8"
+                 class="w-full px-4 py-3 bg-black/30 border border-[color:var(--sj-border)] rounded-xl text-white placeholder-white/20 focus:outline-none focus:border-[color:var(--sj-primary)] focus:bg-white/5 transition-all"
+                 placeholder="••••••••">
+        </div>
+
+        <button type="submit"
+                class="w-full py-3.5 rounded-xl font-bold text-black bg-gradient-to-r from-[color:var(--sj-amber)] to-[color:var(--sj-rose)] hover:opacity-90 shadow-[0_10px_20px_-10px_rgba(251,191,36,0.4)] transform hover:-translate-y-0.5 transition-all mt-4">
+          Установить и войти
+        </button>
+      </form>
+
+      <div class="mt-6 text-center">
+         <a href="{{ url_for('logout') }}" class="text-xs text-[color:var(--sj-muted)] hover:text-white transition-colors">
+           <i class="fa-solid fa-arrow-left mr-1"></i> Выйти из аккаунта
+         </a>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,737 @@
+{% extends "base.html" %}
+{% set title = "Настройки CRM — Sales Journey" %}
+
+{% block content %}
+<style>
+  [x-cloak] { display: none !important; }
+  .spinner {
+    width: 18px; height: 18px; border: 3px solid rgba(255,255,255,0.2);
+    border-top-color: var(--sj-primary); border-radius: 50%;
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg) } }
+
+  .skeleton {
+    background-color: rgba(255,255,255,0.05);
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+  @keyframes pulse { 50% { opacity: .5; } }
+
+  /* Custom Scrollbar for Modal lists */
+  .custom-scroll::-webkit-scrollbar { width: 6px; }
+  .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+  .custom-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+  .custom-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+</style>
+
+<section class="max-w-7xl mx-auto px-4 py-8"
+         x-data="crmPage({{ company_id if company_id is not none else 'null' }})"
+         x-init="init()"
+         x-cloak>
+
+  <div class="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+    <div class="flex items-center gap-4">
+      <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-white/10 flex items-center justify-center shadow-[0_0_15px_rgba(99,102,241,0.15)]">
+        <i class="fa-solid fa-plug text-indigo-400 text-xl"></i>
+      </div>
+      <div>
+        <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">Интеграция CRM</h1>
+        <p class="text-sm mt-1 text-[color:var(--sj-muted)]">Управление подключением amoCRM / Kommo и аналитика.</p>
+      </div>
+    </div>
+
+    <div class="flex gap-3">
+      <a :href="`/partner_company/${companyId}`"
+         class="px-4 py-2.5 rounded-2xl border border-[color:var(--sj-border)] bg-white/5 hover:bg-white/10 transition-colors text-white/90 text-sm font-medium flex items-center gap-2">
+        <i class="fa-solid fa-arrow-left"></i> Назад
+      </a>
+      <a :href="`/partner_company/${companyId}/crm/dashboard`"
+         class="px-4 py-2.5 rounded-2xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 font-semibold text-sm flex items-center gap-2 transition-colors">
+        <i class="fa-solid fa-chart-pie"></i> Открыть Дэшборд
+      </a>
+    </div>
+  </div>
+
+  <div class="rounded-3xl border border-[color:var(--sj-border)] bg-[#111827]/60 backdrop-blur-xl p-6 mb-6 shadow-xl relative overflow-hidden">
+    <div class="absolute top-0 right-0 -mt-10 -mr-10 w-40 h-40 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+    <div class="flex flex-wrap items-center justify-between gap-4 relative z-10">
+      <div class="flex items-center gap-4">
+        <div class="relative">
+          <div class="w-3 h-3 rounded-full"
+               :class="(!loading.status && crm.connected) ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]' : 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]'"></div>
+          <div x-show="loading.status" class="absolute inset-0 w-3 h-3 border-2 border-indigo-500 rounded-full animate-ping opacity-75"></div>
+        </div>
+
+        <div>
+          <div class="font-bold text-white text-lg">Статус подключения</div>
+          <div class="text-sm text-[color:var(--sj-muted)] mt-0.5">
+            <template x-if="!loading.status && crm.connected">
+              <span>
+                Установлена связь с <b class="text-white" x-text="crm.base_domain"></b>
+                <span x-show="crm.token_expires_at" class="opacity-70 text-xs ml-1">(Токен до: <span x-text="human(crm.token_expires_at)"></span>)</span>
+              </span>
+            </template>
+            <span x-show="!loading.status && !crm.connected" class="text-rose-400">Интеграция не настроена</span>
+            <span x-show="loading.status" class="inline-flex items-center gap-2 text-indigo-400">Проверка статуса...</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex gap-3">
+        <button class="px-4 py-2 rounded-xl border border-[color:var(--sj-border)] bg-white/5 hover:bg-white/10 text-white transition-colors text-sm"
+                @click="refreshCrmStatus()" :disabled="loading.status">
+          <i class="fa-solid fa-rotate mr-1" :class="loading.status ? 'fa-spin' : ''"></i>
+          <span x-text="loading.status ? 'Обновляем...' : 'Проверить'"></span>
+        </button>
+
+        <div x-show="crm.connected">
+          <button @click="unlinkCrm()"
+                  class="px-4 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition-colors text-sm"
+                  :disabled="loading.unlink">
+            <span x-show="!loading.unlink"><i class="fa-solid fa-link-slash mr-1"></i> Отключить</span>
+            <span x-show="loading.unlink"><i class="fa-solid fa-circle-notch fa-spin mr-1"></i> Сброс...</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <template x-if="!crm.connected && !loading.status">
+      <div class="rounded-3xl border border-[color:var(--sj-border)] bg-[#111827]/80 backdrop-blur-xl p-8 mb-8 shadow-2xl animate-fade-in-up" x-transition>
+          <div class="max-w-2xl">
+            <h2 class="font-bold text-xl text-white mb-2 flex items-center gap-2">
+                <i class="fa-solid fa-key text-[color:var(--sj-amber)]"></i> Настройка интеграции
+            </h2>
+            <p class="text-sm text-[color:var(--sj-muted)] mb-6">
+                Создайте приватную интеграцию в AmoCRM (Настройки → Интеграции → Создать) и скопируйте ключи сюда.
+            </p>
+
+            <div class="space-y-5">
+                <div class="group">
+                    <label class="block text-xs font-semibold text-[color:var(--sj-muted)] uppercase tracking-wider mb-2 ml-1">ID интеграции (Client ID)</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                            <i class="fa-solid fa-fingerprint text-[color:var(--sj-muted)] group-focus-within:text-white transition-colors"></i>
+                        </div>
+                        <input type="text" class="w-full pl-11 pr-4 py-3 bg-black/20 border border-[color:var(--sj-border)] rounded-xl text-white placeholder-white/20 focus:outline-none focus:border-indigo-500 focus:bg-white/5 transition-all"
+                               placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" x-model="form.client_id">
+                    </div>
+                </div>
+
+                <div class="group">
+                    <label class="block text-xs font-semibold text-[color:var(--sj-muted)] uppercase tracking-wider mb-2 ml-1">Секретный ключ (Client Secret)</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                            <i class="fa-solid fa-shield-halved text-[color:var(--sj-muted)] group-focus-within:text-white transition-colors"></i>
+                        </div>
+                        <input type="password" class="w-full pl-11 pr-4 py-3 bg-black/20 border border-[color:var(--sj-border)] rounded-xl text-white placeholder-white/20 focus:outline-none focus:border-indigo-500 focus:bg-white/5 transition-all"
+                               placeholder="••••••••••••••••••••••••" x-model="form.client_secret">
+                    </div>
+                </div>
+
+                <div class="group">
+                    <label class="block text-xs font-semibold text-[color:var(--sj-muted)] uppercase tracking-wider mb-2 ml-1">Домен портала</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                            <i class="fa-solid fa-globe text-[color:var(--sj-muted)] group-focus-within:text-white transition-colors"></i>
+                        </div>
+                        <input type="text" class="w-full pl-11 pr-4 py-3 bg-black/20 border border-[color:var(--sj-border)] rounded-xl text-white placeholder-white/20 focus:outline-none focus:border-indigo-500 focus:bg-white/5 transition-all"
+                               placeholder="company.amocrm.ru" x-model="form.base_domain">
+                    </div>
+                    <p class="text-xs text-[color:var(--sj-muted)] mt-2 ml-1"><i class="fa-solid fa-circle-info mr-1"></i>Без https://, просто домен</p>
+                </div>
+            </div>
+
+            <div class="mt-8">
+                <button @click="connect()"
+                        class="px-6 py-3 rounded-xl font-bold text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 shadow-lg shadow-indigo-500/20 transform hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        :disabled="loading.connect">
+                    <span x-show="!loading.connect">Подключить AmoCRM</span>
+                    <span x-show="loading.connect" class="inline-flex items-center gap-2"><i class="fa-solid fa-circle-notch fa-spin"></i> Подключение...</span>
+                </button>
+            </div>
+          </div>
+      </div>
+  </template>
+
+
+  <div x-show="crm.connected" class="space-y-6">
+
+    <div class="rounded-3xl border border-[color:var(--sj-border)] bg-[#111827]/60 backdrop-blur-xl p-5 shadow-lg">
+        <div class="flex flex-wrap items-center justify-between gap-4">
+            <div class="font-bold text-white flex items-center gap-2">
+                <i class="fa-solid fa-filter text-indigo-400"></i> Статистика
+            </div>
+
+            <div class="flex flex-wrap items-center gap-3">
+                <div class="relative">
+                    <select class="appearance-none pl-3 pr-8 py-2 rounded-xl bg-black/20 border border-[color:var(--sj-border)] text-sm text-white focus:outline-none focus:border-indigo-500"
+                            x-model="ui.range" @change="if(ui.range !== 'custom') fetchCrmStats()">
+                        <option value="today">Сегодня</option>
+                        <option value="this_week">Текущая неделя</option>
+                        <option value="last_week">Прошлая неделя</option>
+                        <option value="prev_last_week">Позапрошлая неделя</option>
+                        <option value="custom">Свой период</option>
+                    </select>
+                    <div class="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none text-[color:var(--sj-muted)]">
+                        <i class="fa-solid fa-chevron-down text-xs"></i>
+                    </div>
+                </div>
+
+                <div x-show="ui.range === 'custom'" class="flex items-center gap-2" x-transition>
+                    <input type="date" x-model="ui.customFrom" class="px-3 py-2 rounded-xl bg-black/20 border border-[color:var(--sj-border)] text-white text-sm focus:outline-none focus:border-indigo-500">
+                    <span class="text-[color:var(--sj-muted)]">-</span>
+                    <input type="date" x-model="ui.customTo" class="px-3 py-2 rounded-xl bg-black/20 border border-[color:var(--sj-border)] text-white text-sm focus:outline-none focus:border-indigo-500">
+                    <button @click="fetchCrmStats()" class="px-3 py-2 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-400 border border-indigo-500/30 text-sm transition-colors">OK</button>
+                </div>
+
+                <div class="h-6 w-px bg-[color:var(--sj-border)] mx-1"></div>
+
+                <div class="relative">
+                    <select class="appearance-none pl-3 pr-8 py-2 rounded-xl bg-black/20 border border-[color:var(--sj-border)] text-sm text-white focus:outline-none focus:border-indigo-500"
+                            x-model="ui.sort" @change="applyFilters()">
+                        <option value="won_desc">По успеху ↓</option>
+                        <option value="conv_desc">По конверсии ↓</option>
+                        <option value="lost_asc">По провалам ↑</option>
+                        <option value="name_asc">По имени A-Z</option>
+                    </select>
+                    <div class="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none text-[color:var(--sj-muted)]">
+                        <i class="fa-solid fa-arrow-down-wide-short text-xs"></i>
+                    </div>
+                </div>
+
+                <div class="relative">
+                    <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-[color:var(--sj-muted)] text-xs"></i>
+                    <input class="pl-8 pr-3 py-2 rounded-xl bg-black/20 border border-[color:var(--sj-border)] text-sm text-white placeholder-white/20 focus:outline-none focus:border-indigo-500 w-40 focus:w-56 transition-all"
+                           placeholder="Поиск..." x-model.debounce.300ms="ui.query" @input="applyFilters()">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="rounded-3xl border border-[color:var(--sj-border)] bg-[#111827]/60 p-5 relative overflow-hidden group">
+            <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                <i class="fa-solid fa-plus-circle text-4xl text-blue-400"></i>
+            </div>
+            <div class="text-sm font-medium text-[color:var(--sj-muted)]">Создано лидов</div>
+            <template x-if="loading.stats"><div class="skeleton h-8 w-16 mt-2 rounded"></div></template>
+            <template x-if="!loading.stats">
+                <div class="text-3xl font-extrabold text-white mt-1" x-text="(filtered.kpi?.created ?? crm.stats?.created_count ?? 0)"></div>
+            </template>
+        </div>
+
+        <div class="rounded-3xl border border-emerald-500/20 bg-emerald-500/5 p-5 relative overflow-hidden group">
+            <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                <i class="fa-solid fa-trophy text-4xl text-emerald-400"></i>
+            </div>
+            <div class="text-sm font-medium text-emerald-400/80">Успешно</div>
+            <template x-if="loading.stats"><div class="skeleton h-8 w-16 mt-2 rounded"></div></template>
+            <template x-if="!loading.stats">
+                <div class="text-3xl font-extrabold text-emerald-400 mt-1" x-text="(filtered.kpi?.won ?? crm.stats?.won_count ?? 0)"></div>
+            </template>
+        </div>
+
+        <div class="rounded-3xl border border-rose-500/20 bg-rose-500/5 p-5 relative overflow-hidden group">
+            <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                <i class="fa-solid fa-thumbs-down text-4xl text-rose-400"></i>
+            </div>
+            <div class="text-sm font-medium text-rose-400/80">Провалено</div>
+            <template x-if="loading.stats"><div class="skeleton h-8 w-16 mt-2 rounded"></div></template>
+            <template x-if="!loading.stats">
+                <div class="text-3xl font-extrabold text-rose-400 mt-1" x-text="(filtered.kpi?.lost ?? crm.stats?.lost_count ?? 0)"></div>
+            </template>
+        </div>
+
+        <div class="rounded-3xl border border-[color:var(--sj-border)] bg-[#111827]/60 p-5 relative overflow-hidden group">
+             <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                <i class="fa-solid fa-percent text-4xl text-[color:var(--sj-amber)]"></i>
+            </div>
+            <div class="text-sm font-medium text-[color:var(--sj-muted)]">Конверсия</div>
+            <template x-if="loading.stats"><div class="skeleton h-8 w-16 mt-2 rounded"></div></template>
+            <template x-if="!loading.stats">
+                <div class="text-3xl font-extrabold text-[color:var(--sj-amber)] mt-1" x-text="(filtered.kpi?.conv ?? crm.stats?.conversion ?? 0) + '%'"></div>
+            </template>
+        </div>
+    </div>
+
+    <div class="rounded-3xl border border-[color:var(--sj-border)] bg-[#111827]/60 backdrop-blur-xl overflow-hidden shadow-lg">
+        <div class="px-6 py-4 border-b border-[color:var(--sj-border)] flex justify-between items-center bg-white/5">
+            <h3 class="font-bold text-white">Детализация по сотрудникам</h3>
+
+            <div class="flex gap-2">
+                <button class="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-medium text-white border border-[color:var(--sj-border)] transition-colors"
+                        @click="exportExcel()" :disabled="!crm.stats?.by_user?.length">
+                    <i class="fa-solid fa-file-excel text-emerald-500 mr-1"></i> Excel
+                </button>
+                <button class="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-medium text-white border border-[color:var(--sj-border)] transition-colors"
+                        @click="exportCSV()" :disabled="!crm.stats?.by_user?.length">
+                    <i class="fa-solid fa-file-csv text-blue-500 mr-1"></i> CSV
+                </button>
+            </div>
+        </div>
+
+        <div class="overflow-x-auto">
+            <template x-if="loading.stats">
+                <div class="p-6 space-y-4">
+                    <div class="skeleton h-10 w-full rounded-lg"></div>
+                    <div class="skeleton h-10 w-full rounded-lg"></div>
+                    <div class="skeleton h-10 w-full rounded-lg"></div>
+                </div>
+            </template>
+
+            <template x-if="!loading.stats">
+                <table class="w-full text-sm text-left">
+                    <thead class="text-xs text-[color:var(--sj-muted)] uppercase bg-black/20 border-b border-[color:var(--sj-border)]">
+                        <tr>
+                            <th class="px-6 py-4 font-semibold">Сотрудник</th>
+                            <th class="px-6 py-4 font-semibold text-center">Создано</th>
+                            <th class="px-6 py-4 font-semibold text-center text-emerald-400">Успешно</th>
+                            <th class="px-6 py-4 font-semibold text-center text-rose-400">Провалено</th>
+                            <th class="px-6 py-4 font-semibold text-right text-[color:var(--sj-amber)]">Конверсия</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-[color:var(--sj-border)]">
+                        <template x-for="row in filtered.rows" :key="row.user_id">
+                            <tr class="hover:bg-white/5 transition-colors group">
+                                <td class="px-6 py-4">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-8 h-8 rounded-lg bg-white/5 border border-[color:var(--sj-border)] flex items-center justify-center font-bold text-white/50 text-xs">
+                                            <span x-text="(row.display_name||'U')[0].toUpperCase()"></span>
+                                        </div>
+                                        <div>
+                                            <div class="font-medium text-white" x-text="row.display_name"></div>
+                                            <div class="text-xs text-[color:var(--sj-muted)]" x-text="`ID: ${row.user_id}`"></div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4 text-center font-mono text-white/80" x-text="row.created"></td>
+                                <td class="px-6 py-4 text-center font-mono font-bold text-emerald-400" x-text="row.won"></td>
+                                <td class="px-6 py-4 text-center font-mono text-rose-400/80" x-text="row.lost"></td>
+                                <td class="px-6 py-4 text-right">
+                                    <span class="px-2 py-1 rounded-md bg-amber-500/10 text-[color:var(--sj-amber)] font-bold text-xs border border-amber-500/20" x-text="row.conv + '%'"></span>
+                                </td>
+                            </tr>
+                        </template>
+                        <tr x-show="!filtered.rows.length">
+                            <td colspan="5" class="px-6 py-10 text-center text-[color:var(--sj-muted)]">
+                                <i class="fa-solid fa-inbox text-2xl mb-2 opacity-50"></i><br>
+                                Данных за этот период нет
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </template>
+        </div>
+
+        <div class="px-6 py-4 border-t border-[color:var(--sj-border)] bg-white/5 flex justify-between items-center">
+            <div class="text-xs text-[color:var(--sj-muted)]">
+                Данные обновляются в реальном времени при запросе
+            </div>
+            <button class="px-4 py-2 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 border border-indigo-500/30 font-medium text-sm transition-colors flex items-center gap-2"
+                    @click="openMapping()" :disabled="loading.users">
+                <i class="fa-solid fa-users-gear"></i>
+                <span x-show="!loading.users">Настроить сопоставление пользователей</span>
+                <span x-show="loading.users">Загрузка...</span>
+            </button>
+        </div>
+    </div>
+  </div>
+
+  <div x-show="crm.mapOpen" x-transition.opacity.duration.300ms x-cloak class="relative z-[100]">
+    <div class="fixed inset-0 bg-black/80 backdrop-blur-sm" @click="crm.mapOpen=false"></div>
+
+    <div class="fixed inset-0 flex items-center justify-center p-4">
+        <div class="w-full max-w-5xl max-h-[90vh] flex flex-col rounded-3xl border border-[color:var(--sj-border)] bg-[#0f172a] shadow-2xl animate-fade-in-up"
+             @click.stop>
+
+            <div class="flex items-center justify-between px-6 py-5 border-b border-[color:var(--sj-border)] bg-white/5">
+                <div>
+                    <h3 class="text-lg font-bold text-white">Сопоставление пользователей</h3>
+                    <p class="text-xs text-[color:var(--sj-muted)]">Свяжите сотрудников портала с пользователями в AmoCRM</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <button class="px-3 py-1.5 rounded-xl border border-[color:var(--sj-border)] bg-white/5 hover:bg-white/10 text-xs text-white transition-colors"
+                            @click="autoMap()">
+                        <i class="fa-solid fa-wand-magic-sparkles text-[color:var(--sj-amber)] mr-1"></i> Авто-связь
+                        <span class="text-[color:var(--sj-muted)] ml-1" x-show="auto.suggestionsCount" x-text="`(${auto.suggestionsCount})`"></span>
+                    </button>
+                    <button class="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 text-white flex items-center justify-center transition-colors"
+                            @click="crm.mapOpen=false"><i class="fa-solid fa-times"></i></button>
+                </div>
+            </div>
+
+            <div class="flex-1 overflow-hidden grid md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-[color:var(--sj-border)]">
+
+                <div class="flex flex-col h-full min-h-[400px]">
+                    <div class="p-4 border-b border-[color:var(--sj-border)] bg-white/5">
+                        <div class="text-xs font-semibold text-[color:var(--sj-muted)] uppercase tracking-wider mb-2">Наши Сотрудники</div>
+                        <div class="relative">
+                            <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-[color:var(--sj-muted)] text-xs"></i>
+                            <input class="w-full pl-8 pr-3 py-2 rounded-xl bg-black/30 border border-[color:var(--sj-border)] text-sm text-white placeholder-white/20 focus:outline-none focus:border-indigo-500"
+                                   placeholder="Поиск..." x-model.trim="ui.mapLeft" />
+                        </div>
+                    </div>
+
+                    <div class="flex-1 overflow-y-auto custom-scroll p-2 space-y-1">
+                        <template x-for="u in people.items.filter(p => filterText(p.display_name||p.email, ui.mapLeft))" :key="u.id">
+                            <div class="p-3 rounded-xl border border-[color:var(--sj-border)] bg-white/5 hover:bg-white/10 transition-colors">
+                                <div class="flex flex-col gap-3">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-8 h-8 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center text-xs font-bold shrink-0">
+                                            <span x-text="(u.display_name||u.email||'U')[0].toUpperCase()"></span>
+                                        </div>
+                                        <div class="min-w-0">
+                                            <div class="text-sm font-semibold text-white truncate" x-text="u.display_name || u.email"></div>
+                                            <div class="text-xs text-[color:var(--sj-muted)]">ID: <span x-text="u.id"></span></div>
+                                        </div>
+                                    </div>
+
+                                    <div class="relative">
+                                        <select class="w-full appearance-none pl-3 pr-8 py-2 rounded-lg bg-black/40 border border-[color:var(--sj-border)] text-xs text-white focus:outline-none focus:border-indigo-500 transition-colors cursor-pointer"
+                                                :class="crm.mapping[String(u.id)] ? 'border-emerald-500/50 text-emerald-300' : ''"
+                                                :value="crm.mapping[String(u.id)] || auto.guess[String(u.id)] || ''"
+                                                @change="mapUser(u.id, Number($event.target.value))">
+                                            <option value="">— Не выбрано —</option>
+                                            <template x-for="au in crm.users" :key="au.id">
+                                                <option :value="au.id" x-text="au.name + (au.email?' ('+au.email+')':'')"></option>
+                                            </template>
+                                        </select>
+                                        <div class="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none text-[color:var(--sj-muted)]">
+                                            <i class="fa-solid fa-chevron-down text-[10px]"></i>
+                                        </div>
+                                    </div>
+
+                                    <div class="text-[10px] text-emerald-400/80 flex items-center gap-1" x-show="auto.guess[String(u.id)] && !crm.mapping[String(u.id)]">
+                                        <i class="fa-solid fa-wand-magic-sparkles"></i> Предлагаем: <span class="font-bold" x-text="nameByAmoId(auto.guess[String(u.id)])"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                        <div x-show="!(people.items?.length)" class="p-8 text-center text-sm text-[color:var(--sj-muted)]">
+                            Сотрудники не найдены
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex flex-col h-full min-h-[400px] bg-black/20">
+                    <div class="p-4 border-b border-[color:var(--sj-border)] bg-white/5">
+                        <div class="text-xs font-semibold text-[color:var(--sj-muted)] uppercase tracking-wider mb-2">Список из AmoCRM</div>
+                        <div class="relative">
+                            <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-[color:var(--sj-muted)] text-xs"></i>
+                            <input class="w-full pl-8 pr-3 py-2 rounded-xl bg-black/30 border border-[color:var(--sj-border)] text-sm text-white placeholder-white/20 focus:outline-none focus:border-indigo-500"
+                                   placeholder="Поиск..." x-model.trim="ui.mapRight" />
+                        </div>
+                    </div>
+
+                    <div class="flex-1 overflow-y-auto custom-scroll p-2 space-y-1">
+                        <template x-for="au in crm.users.filter(x => filterText(x.name + ' ' + (x.email||''), ui.mapRight))" :key="au.id">
+                            <div class="p-3 rounded-xl border border-[color:var(--sj-border)] bg-white/5 flex items-center gap-3">
+                                <div class="w-8 h-8 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-xs font-bold shrink-0">
+                                    A
+                                </div>
+                                <div class="min-w-0">
+                                    <div class="text-sm font-semibold text-white truncate" x-text="au.name"></div>
+                                    <div class="text-xs text-[color:var(--sj-muted)]">
+                                        ID: <span x-text="au.id"></span>
+                                        <span x-show="au.email" class="opacity-70"> · <span x-text="au.email"></span></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                        <div x-show="!(crm.users?.length)" class="p-8 text-center text-sm text-[color:var(--sj-muted)]">
+                            Пользователи AmoCRM не загружены
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="px-6 py-4 border-t border-[color:var(--sj-border)] bg-white/5 flex justify-end">
+                <button class="px-6 py-2.5 rounded-xl bg-white text-black font-bold hover:bg-slate-200 transition-colors"
+                        @click="crm.mapOpen=false">Готово, закрыть</button>
+            </div>
+        </div>
+    </div>
+  </div>
+
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// --- API HELPER ---
+function createApi(){
+  const withCreds = { credentials:'same-origin' };
+  async function parse(r){ let j=null; try{ j=await r.json(); }catch(_){}
+    if(!r.ok){ throw new Error(j?.description || j?.detail || j?.message || `HTTP ${r.status}`); }
+    return j ?? {};
+  }
+  async function get(u){ return parse(await fetch(u, withCreds)); }
+  async function post(u, body){
+    const opts={...withCreds, method:'POST'};
+    if(body instanceof FormData){ opts.body=body; }
+    else { opts.headers={'Content-Type':'application/json'}; opts.body=JSON.stringify(body||{}); }
+    return parse(await fetch(u, opts));
+  }
+  return {get, post};
+}
+const API = createApi();
+
+// --- LOGIC ---
+function norm(s){
+  if(!s) return '';
+  return String(s).toLowerCase().replaceAll('ё','е').replace(/[^\p{L}\p{N}]+/gu,'')
+}
+
+function crmPage(initialCompanyId){
+  const today = new Date().toISOString().split('T')[0];
+  return {
+    companyId: initialCompanyId,
+    crm: {
+      connected:false, base_domain:'', token_expires_at:null,
+      stats:null, mapOpen:false, users:[], mapping:{}
+    },
+    form: { client_id: '', client_secret: '', base_domain: '' },
+    auto:{ guess:{}, suggestionsCount:0 },
+    people:{ items:[], total:0 },
+    loading: { status:true, stats:true, sync:false, unlink:false, users:false, connect:false },
+    ui: {
+        range:'this_week', sort:'won_desc', query:'',
+        customFrom: today, customTo: today,
+        mapLeft: '', mapRight: ''
+    },
+    filtered: { rows:[], kpi:null },
+
+    filterText(s,q){ if(!q?.trim()) return true; s = (s||'')+''; return s.toLowerCase().includes(q.toLowerCase()); },
+    human(ts){ try{ const d=new Date((typeof ts==='number' && ts<4e9)? ts*1000 : ts); return d.toLocaleString('ru-RU', {dateStyle:'medium', timeStyle:'short'}); }catch(e){ return ts || '—'; } },
+
+    toastOk(text){ (Alpine.store('toasts')?.push || alert)({ title: 'Успешно', text, icon:'fa-solid fa-circle-check', tone:'ok' }); },
+    toastErr(text){ (Alpine.store('toasts')?.push || alert)({ title: 'Ошибка', text, icon:'fa-solid fa-triangle-exclamation', tone:'err' }); },
+
+    async init(){
+      this.loading.status = true;
+      this.loading.stats = true;
+      await this.refreshCrmStatus();
+      if(this.crm.connected){
+        await Promise.all([this.fetchCrmStats(), this.loadPeople()]);
+      } else {
+        this.loading.stats = false;
+      }
+      this.loading.status = false;
+    },
+
+    async refreshCrmStatus(){
+      this.loading.status = true;
+      try{
+        const s = await API.get(`/api/partners/company/${this.companyId}/crm/amocrm/status`);
+        this.crm.connected = !!(s.connected ?? s.linked);
+        this.crm.base_domain = s.base_domain || s.account?.domain || '';
+        this.crm.token_expires_at = s.token_expires_at || null;
+      }catch(e){ console.error(e); }
+      finally{ this.loading.status = false; }
+    },
+
+    async connect() {
+        if (!this.form.client_id.trim() || !this.form.client_secret.trim() || !this.form.base_domain.trim()) {
+            this.toastErr('Заполните все поля (ID, Secret, Domain)');
+            return;
+        }
+        this.loading.connect = true;
+        try {
+            const response = await fetch(`/api/partners/company/${this.companyId}/crm/amocrm/connect`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify(this.form)
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Ошибка инициализации');
+
+            if (data.auth_url) {
+                // Open popup
+                const w = 700, h = 600;
+                const left = (screen.width/2)-(w/2);
+                const top = (screen.height/2)-(h/2);
+                const authWindow = window.open(data.auth_url, 'AmoCRM-Auth', `width=${w},height=${h},top=${top},left=${left}`);
+
+                // Poll for closure
+                const checkWindow = setInterval(() => {
+                    if (authWindow.closed) {
+                        clearInterval(checkWindow);
+                        this.init(); // Refresh everything
+                        this.toastOk('Окно авторизации закрыто, обновляем статус...');
+                    }
+                }, 1000);
+            }
+        } catch (e) {
+            this.toastErr(e.message);
+        } finally {
+            this.loading.connect = false;
+        }
+    },
+
+    statsQuery(){
+      const params = new URLSearchParams();
+      params.set('range', this.ui.range);
+      if (this.ui.range === 'custom' && this.ui.customFrom && this.ui.customTo) {
+          const toDate = new Date(this.ui.customTo);
+          toDate.setHours(23, 59, 59, 999);
+          const fromDate = new Date(this.ui.customFrom);
+          params.set('from', Math.floor(fromDate.getTime() / 1000));
+          params.set('to', Math.floor(toDate.getTime() / 1000));
+      }
+      return params.toString();
+    },
+
+    async fetchCrmStats(){
+      if(!this.crm.connected) return;
+      this.loading.stats = true;
+      try{
+        const stats = await API.get(`/api/partners/company/${this.companyId}/crm/stats?${this.statsQuery()}`);
+        this.crm.stats = stats || {};
+        this.applyFilters();
+      }catch(e){ this.toastErr(e.message); this.crm.stats = {}; }
+      finally{ this.loading.stats = false; }
+    },
+
+    async unlinkCrm(){
+        if (!confirm('Отключить интеграцию? Ключи будут удалены.')) return;
+        this.loading.unlink = true;
+        try{
+            await API.post(`/api/partners/company/${this.companyId}/crm/amocrm/unlink`,{});
+            this.crm.connected = false;
+            this.crm.stats = null;
+            this.filtered = { rows:[], kpi:null };
+            this.toastOk('Интеграция отключена');
+        }catch(e){ this.toastErr(e.message); }
+        finally{ this.loading.unlink = false; }
+    },
+
+    async openMapping(){
+      if(!this.crm.connected) return this.toastErr('Сначала подключите amoCRM');
+      this.loading.users = true;
+      try{
+        const [jUsers, jMap] = await Promise.all([
+          API.get(`/api/partners/company/${this.companyId}/crm/users`),
+          API.get(`/api/partners/company/${this.companyId}/crm/map/list`),
+        ]);
+        if(!jUsers.connected) return this.toastErr('Нет связи с API AmoCRM');
+        this.crm.users = jUsers.users || [];
+        this.crm.mapping = jMap.map || {};
+        this.crm.mapOpen = true;
+        this.buildAutoGuesses();
+      }catch(e){ this.toastErr(e.message); }
+      finally{ this.loading.users = false; }
+    },
+
+    nameByAmoId(id){
+      const u = this.crm.users.find(x=> Number(x.id)===Number(id));
+      return u ? u.name : ('#'+id);
+    },
+
+    buildAutoGuesses(){
+      const guess = {};
+      const amoIndexByName = {};
+      const amoIndexByEmail = {};
+      for(const au of this.crm.users){
+        amoIndexByName[norm(au.name)] = au.id;
+        if(au.email) amoIndexByEmail[norm(au.email)] = au.id;
+      }
+      let cnt = 0;
+      for(const p of (this.people.items || [])){
+        const pid = String(p.id);
+        if(this.crm.mapping[pid]) continue;
+        const nDisp = norm(p.display_name || '');
+        const nEmail = norm(p.email || '');
+        let g = null;
+        if(nEmail && amoIndexByEmail[nEmail]) g = amoIndexByEmail[nEmail];
+        else if(nDisp && amoIndexByName[nDisp]) g = amoIndexByName[nDisp];
+        if(g){ guess[pid] = g; cnt++; }
+      }
+      this.auto.guess = guess;
+      this.auto.suggestionsCount = cnt;
+    },
+
+    async autoMap(){
+      const entries = Object.entries(this.auto.guess || {}).filter(([pid, amoId]) => !this.crm.mapping[pid] && amoId);
+      if(!entries.length) return this.toastErr('Нет очевидных совпадений для авто-связи');
+      let success = 0;
+      for(const [pid, amoId] of entries){
+        try {
+            await API.post(`/api/partners/company/${this.companyId}/crm/map`, { platform_user_id: Number(pid), amocrm_user_id: Number(amocrmId) });
+            this.crm.mapping[String(pid)] = Number(amoId);
+            success++;
+        } catch(e){}
+      }
+      this.toastOk(`Связано автоматически: ${success}`);
+      this.buildAutoGuesses();
+    },
+
+    async mapUser(platformId, amocrmId){
+      if(!amocrmId) return; // ignore empty selects
+      try{
+        await API.post(`/api/partners/company/${this.companyId}/crm/map`, { platform_user_id: Number(platformId), amocrm_user_id: Number(amocrmId) });
+        this.crm.mapping[String(platformId)] = Number(amocrmId);
+        this.toastOk('Сохранено');
+      }catch(e){ this.toastErr(e.message); }
+    },
+
+    async loadPeople(){
+      try{
+        const r = await API.get(`/api/partners/company/${this.companyId}/members?page=1&per_page=500`);
+        this.people.items = r.members || r.items || [];
+      }catch(_){}
+    },
+
+    applyFilters(){
+      if (!this.crm.stats || !this.crm.stats.by_user) {
+        this.filtered = { rows: [], kpi: { created:0, won: 0, lost: 0, conv: 0 } };
+        return;
+      }
+      const src = (this.crm.stats.by_user || []).slice();
+      const q = this.ui.query?.trim().toLowerCase() || '';
+      let rows = q ? src.filter(r => (r.display_name||'').toLowerCase().includes(q)) : src;
+
+      switch(this.ui.sort){
+        case 'won_desc': rows.sort((a,b)=> (b.won - a.won) || (a.lost - b.lost)); break;
+        case 'conv_desc': rows.sort((a,b)=> (b.conv - a.conv) || (b.won - a.won)); break;
+        case 'lost_asc': rows.sort((a,b)=> (a.lost - b.lost) || (b.won - a.won)); break;
+        case 'name_asc': rows.sort((a,b)=> String(a.display_name||'').localeCompare(String(b.display_name||''))); break;
+      }
+
+      const created = rows.reduce((s,r)=> s+r.created, 0);
+      const won = rows.reduce((s,r)=> s+r.won, 0);
+      const lost = rows.reduce((s,r)=> s+r.lost, 0);
+      const conv = created ? Math.round(100*won/created) : 0;
+      this.filtered = { rows, kpi:{ created, won, lost, conv } };
+    },
+
+    exportCSV(){
+      const rows = this.filtered.rows.length ? this.filtered.rows : (this.crm.stats?.by_user || []);
+      if(!rows.length) return;
+      const headers = ['ID','Name','Created','Won','Lost','Conversion'];
+      const lines = [headers.join(';')].concat(
+        rows.map(r => [r.user_id, `"${String(r.display_name||'').replaceAll('"','""')}"`, r.created, r.won, r.lost, r.conv].join(';'))
+      );
+      const blob = new Blob(["\ufeff" + lines.join('\n')], {type:'text/csv;charset=utf-8;'});
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+      a.download = `crm_export_${this.companyId}.csv`; a.click();
+    },
+
+    exportExcel(){
+      const params = new URLSearchParams();
+      params.set('range', this.ui.range);
+      params.set('sort', this.ui.sort);
+      if(this.ui.query?.trim()) params.set('q', this.ui.query.trim());
+      // Re-use range params if custom
+      if (this.ui.range === 'custom') {
+         const p = new URLSearchParams(this.statsQuery());
+         if(p.get('from')) params.set('from', p.get('from'));
+         if(p.get('to')) params.set('to', p.get('to'));
+      }
+      window.open(`/api/partners/company/${this.companyId}/crm/stats.xlsx?` + params.toString(), '_blank');
+    },
+  }
+}
+</script>
+{% endblock %}

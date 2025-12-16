@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+{% set title = "Дэшборд — Sales Journey" %}
+
+{% block content %}
+<style>
+  .pulse-dot{ width:10px;height:10px;border-radius:9999px;background:#10b981; box-shadow:0 0 0 0 rgba(16,185,129,.7); animation:pulse 1.5s infinite; }
+  @keyframes pulse{ 0%{ box-shadow:0 0 0 0 rgba(16,185,129,.7)} 70%{ box-shadow:0 0 0 10px rgba(16,185,129,0)} 100%{ box-shadow:0 0 0 0 rgba(16,185,129,0)} }
+  .rise{ animation:rise .6s ease; }
+  @keyframes rise{ from{transform:translateY(6px); opacity:.0} to{transform:translateY(0); opacity:1} }
+  .flash-win{ animation:flash 1.2s ease; }
+  @keyframes flash{ 0%{background:rgba(34,197,94,.2)} 100%{background:transparent} }
+</style>
+
+<section class="max-w-7xl mx-auto px-4 py-6" x-data="tvDashboard({{ company_id if company_id is not none else 'null' }})" x-init="init()" x-cloak>
+
+  <!-- Header -->
+  <div class="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
+    <div class="flex items-center gap-3">
+      <a :href="`/partner/company/${companyId}/crm`"
+         class="px-3 py-2 rounded-xl border border-slate-200 dark:border-[var(--sj-border)] hover:bg-slate-100 dark:hover:bg-[var(--sj-elev)] text-decoration-none text-white">
+        ← Назад
+      </a>
+      <div>
+        <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight m-0">Дэшборд</h1>
+        <div class="flex items-center gap-2 text-sm text-emerald-500 mt-1">
+          <span class="pulse-dot"></span> LIVE
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-indigo-600 rounded-xl p-3 flex items-center gap-3 shadow-lg shadow-indigo-500/20">
+      <div class="text-indigo-100 text-sm font-medium">Код для сотрудников:</div>
+      <div class="bg-white/10 px-3 py-1 rounded-lg font-mono text-xl font-bold tracking-wider text-white select-all">
+        {{ invite_code }}
+      </div>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <div class="text-sm text-slate-500 dark:text-[var(--sj-muted)]">Обновление: <b x-text="intervalSec"></b> сек.</div>
+      <select class="rounded-xl border border-slate-300 dark:border-[var(--sj-border)] bg-white/70 dark:bg-white/5 px-2 py-2 text-white bg-dark"
+              x-model.number="intervalSec" @change="restartTimer()">
+        <option :value="10">10</option>
+        <option :value="15">15</option>
+        <option :value="30">30</option>
+      </select>
+      <button class="px-3 py-2 rounded-xl border border-slate-300 dark:border-[var(--sj-border)] hover:bg-slate-100 dark:hover:bg-[var(--sj-elev)]"
+              @click="toggleFS()">
+        На весь экран
+      </button>
+    </div>
+  </div>
+    <div class="flex items-center gap-2">
+      <div class="text-sm text-slate-500 dark:text-[var(--sj-muted)]">Обновление: <b x-text="intervalSec"></b> сек.</div>
+      <select class="rounded-xl border border-slate-300 dark:border-[var(--sj-border)] bg-white/70 dark:bg-white/5 px-2 py-2"
+              x-model.number="intervalSec" @change="restartTimer()">
+        <option :value="10">10</option>
+        <option :value="15">15</option>
+        <option :value="30">30</option>
+        <option :value="60">60</option>
+      </select>
+      <button class="px-3 py-2 rounded-xl border border-slate-300 dark:border-[var(--sj-border)] hover:bg-slate-100 dark:hover:bg-[var(--sj-elev)]"
+              @click="toggleFS()">
+        На весь экран
+      </button>
+    </div>
+  </div>
+
+  <!-- KPI row -->
+  <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
+    <div class="rounded-2xl border border-slate-200 dark:border-[var(--sj-border)] bg-white dark:bg-[var(--sj-elev)] p-5 rise">
+      <div class="text-sm text-slate-500 dark:text-[var(--sj-muted)]">Успешно сегодня</div>
+      <div class="mt-1 text-4xl font-extrabold" x-text="kpi.won_today"></div>
+    </div>
+    <div class="rounded-2xl border border-slate-200 dark:border-[var(--sj-border)] bg-white dark:bg-[var(--sj-elev)] p-5 rise">
+      <div class="text-sm text-slate-500 dark:text-[var(--sj-muted)]">Не реализовано</div>
+      <div class="mt-1 text-4xl font-extrabold" x-text="kpi.lost_today"></div>
+    </div>
+    <div class="rounded-2xl border border-slate-200 dark:border-[var(--sj-border)] bg-white dark:bg-[var(--sj-elev)] p-5 rise">
+      <div class="text-sm text-slate-500 dark:text-[var(--sj-muted)]">Создано лидов</div>
+      <div class="mt-1 text-4xl font-extrabold" x-text="kpi.created_today"></div>
+    </div>
+    <div class="rounded-2xl border border-slate-200 dark:border-[var(--sj-border)] bg-white dark:bg-[var(--sj-elev)] p-5 rise">
+      <div class="text-sm text-slate-500 dark:text-[var(--sj-muted)]">Конверсия</div>
+      <div class="mt-1 text-4xl font-extrabold" x-text="kpi.conversion_today + '%'"></div>
+    </div>
+  </div>
+
+  <!-- Top 3 -->
+  <div class="mt-6 grid md:grid-cols-3 gap-3">
+    <template x-for="(u,idx) in top3" :key="u.platform_id || ('amo'+u.amocrm_user_id)">
+      <div class="rounded-2xl border border-slate-200 dark:border-[var(--sj-border)] bg-white dark:bg-[var(--sj-elev)] p-5 rise">
+        <div class="flex items-center justify-between">
+          <div class="text-sm text-slate-500 dark:text-[var(--sj-muted)]">Место #<span x-text="idx+1"></span></div>
+          <div class="text-2xl" x-text="['🥇','🥈','🥉'][idx] || '⭐'"></div>
+        </div>
+        <div class="mt-2 text-xl font-extrabold truncate" x-text="u.display_name"></div>
+        <div class="mt-1 text-sm text-slate-500 dark:text-[var(--sj-muted)]" x-text="'amo: ' + (u.amocrm_name || u.amocrm_user_id)"></div>
+        <div class="mt-3 grid grid-cols-3 gap-2 text-center">
+          <div>
+            <div class="text-xs text-slate-500 dark:text-[var(--sj-muted)]">WON</div>
+            <div class="text-2xl font-bold" x-text="u.won"></div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500 dark:text-[var(--sj-muted)]">LOST</div>
+            <div class="text-2xl font-bold" x-text="u.lost"></div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500 dark:text-[var(--sj-muted)]">%</div>
+            <div class="text-2xl font-bold" x-text="u.conv"></div>
+          </div>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <!-- Table -->
+  <div class="mt-6 rounded-2xl border border-slate-200 dark:border-[var(--sj-border)] overflow-hidden">
+    <div class="px-4 py-3 bg-slate-50 dark:bg-[var(--sj-bg)] flex items-center justify-between">
+      <div class="font-semibold">Сотрудники (сопоставленные)</div>
+      <div class="text-sm text-slate-500 dark:text-[var(--sj-muted)]">Обновлено: <span x-text="fmtTime(updatedAt)"></span></div>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-base">
+        <thead>
+          <tr class="bg-slate-50 dark:bg-[var(--sj-bg)] border-b border-slate-200 dark:border-[var(--sj-border)]">
+            <th class="text-left px-4 py-3 text-slate-500 dark:text-[var(--sj-muted)]">Сотрудник</th>
+            <th class="text-right px-4 py-3">Создано</th>
+            <th class="text-right px-4 py-3">WON</th>
+            <th class="text-right px-4 py-3">LOST</th>
+            <th class="text-right px-4 py-3">Конверсия</th>
+            <th class="text-right px-4 py-3">WON/час</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="row in rows" :key="row.platform_id || ('amo'+row.amocrm_user_id)">
+            <tr :class="row._flash ? 'flash-win' : ''"
+                class="border-t border-slate-200 dark:border-[var(--sj-border)] hover:bg-slate-50 dark:hover:bg-[var(--sj-bg)]">
+              <td class="px-4 py-3">
+                <div class="font-semibold truncate" x-text="row.display_name"></div>
+                <div class="text-xs text-slate-500 dark:text-[var(--sj-muted)]">amo: <span x-text="row.amocrm_name"></span></div>
+              </td>
+              <td class="px-4 py-3 text-right tabular-nums" x-text="row.created"></td>
+              <td class="px-4 py-3 text-right tabular-nums" x-text="row.won"></td>
+              <td class="px-4 py-3 text-right tabular-nums" x-text="row.lost"></td>
+              <td class="px-4 py-3 text-right tabular-nums" x-text="row.conv + '%'"></td>
+              <td class="px-4 py-3 text-right tabular-nums" x-text="row.wins_per_hour"></td>
+            </tr>
+          </template>
+          <tr x-show="!rows.length">
+            <td colspan="6" class="px-4 py-6 text-center text-slate-500 dark:text-[var(--sj-muted)]">Нет сопоставленных сотрудников.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function tvDashboard(companyId){
+  const withCreds = { credentials:'same-origin' };
+  async function jget(url){
+    const r = await fetch(url, withCreds);
+    const j = await r.json().catch(()=> ({}));
+    if(!r.ok) throw new Error(j?.description || j?.detail || 'Ошибка загрузки');
+    return j;
+  }
+  return {
+    companyId,
+    intervalSec: 30,
+    timer: null,
+    updatedAt: null,
+    kpi: { won_today:0, lost_today:0, created_today:0, conversion_today:0 },
+    map: {},          // platform_id -> amocrm_user_id
+    people: [],       // сотрудники платформы
+    amoUsers: [],     // сырые amo данные (на всякий)
+    rows: [],         // итоговые строки для таблицы (только сопоставленные)
+    top3: [],
+
+    async init(){
+      await this.loadMapping();
+      await this.loadPeople();
+      await this.refresh();
+      this.restartTimer();
+      // авто-переключение тёмной темы для TV, если хочется:
+      // window.__setTheme('dark');
+    },
+
+    async loadMapping(){
+      const m = await jget(`/api/partners/company/${this.companyId}/crm/map/list`);
+      this.map = m.map || {};
+    },
+
+    async loadPeople(){
+      const p = await jget(`/api/partners/company/${this.companyId}/members?page=1&per_page=500`);
+      this.people = p.members || p.items || [];
+    },
+
+    fmtTime(ts){ if(!ts) return ''; const d=new Date(ts*1000); return d.toLocaleTimeString(); },
+
+    async refresh(){
+      const rt = await jget(`/api/partners/company/${this.companyId}/crm/rt?range=today`);
+      this.updatedAt = rt.updated_at || Math.floor(Date.now()/1000);
+      this.kpi = rt.kpi || this.kpi;
+
+      // соберём индекс по amo id
+      const amoIndex = {};
+      (rt.users || []).forEach(u => { amoIndex[String(u.amocrm_user_id)] = u; });
+
+      // строим строки только для сопоставленных
+      const out = [];
+      for(const [platformId, amoId] of Object.entries(this.map)){
+        const p = this.people.find(x => String(x.id) === String(platformId));
+        const amo = amoIndex[String(amoId)] || { amocrm_user_id:+amoId, amocrm_name:'—', won:0,lost:0,created:0,conv:0,wins_per_hour:0 };
+        const prev = this.rows.find(x => String(x.platform_id) === String(platformId));
+        const flash = prev && amo.won > (prev.won||0);
+
+        out.push({
+          platform_id: platformId,
+          display_name: p?.display_name || p?.email || amo.amocrm_name || ('User '+amoId),
+          amocrm_user_id: amo.amocrm_user_id,
+          amocrm_name: amo.amocrm_name,
+          created: amo.created,
+          won: amo.won,
+          lost: amo.lost,
+          conv: amo.conv,
+          wins_per_hour: amo.wins_per_hour,
+          _flash: !!flash
+        });
+      }
+
+      // сортировка для таблицы
+      out.sort((a,b)=> (b.won - a.won) || (b.conv - a.conv) || (b.created - a.created));
+
+      this.rows = out;
+
+      // топ-3
+      this.top3 = out.slice(0,3);
+    },
+
+    restartTimer(){
+      if(this.timer) clearInterval(this.timer);
+      this.timer = setInterval(()=> this.refresh().catch(()=>{}), this.intervalSec*1000);
+    },
+
+    toggleFS(){
+      if(!document.fullscreenElement){
+        document.documentElement.requestFullscreen?.();
+      }else{
+        document.exitFullscreen?.();
+      }
+    }
+  }
+}
+</script>
+{% endblock %}

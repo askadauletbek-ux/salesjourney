@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="max-w-2xl mx-auto px-4 py-16 text-center">
+  <div class="rounded-3xl border border-white/10 bg-slate-900/60 p-8 md:p-12">
+    <div class="text-5xl font-extrabold text-indigo-400 mb-4">{{ error_code|default('Ошибка') }}</div>
+    <h1 class="text-3xl font-bold">{{ title|default('Что-то пошло не так') }}</h1>
+    <p class="text-slate-300 mt-2">{{ description|default('Мы уже работаем над решением проблемы.') }}</p>
+    <div class="mt-8">
+      <a href="/" class="px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-semibold transition">
+        Вернуться на главную
+      </a>
+    </div>
+  </div>
+</section>
+{% endblock %}

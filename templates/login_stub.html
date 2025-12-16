@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% set title = "Dev Login — Sales Journey" %}
+
+{% block content %}
+<div class="min-h-[70vh] grid place-items-center">
+  <div class="w-full max-w-md rounded-2xl border border-[color:var(--sj-border)] bg-white/5 p-6">
+    <div class="text-center">
+      <div class="w-14 h-14 mx-auto rounded-2xl bg-white/10 border border-[color:var(--sj-border)] flex items-center justify-center">
+        <i class="fa-solid fa-rocket text-[color:var(--sj-amber)] text-xl"></i>
+      </div>
+      <h1 class="text-2xl font-extrabold mt-4">Добро пожаловать</h1>
+      <p class="text-sm text-[color:var(--sj-muted)] mt-1">Dev Mode вход (только для разработки)</p>
+    </div>
+
+    <div class="mt-5">
+      <label class="text-sm font-medium">Имя пользователя</label>
+      <input type="text" id="usernameInput"
+             class="mt-1 w-full px-3 py-2 rounded-2xl bg-white/5 border border-[color:var(--sj-border)] focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+             placeholder="Например: alex">
+    </div>
+
+    <button onclick="performLogin()"
+            class="mt-4 w-full py-2.5 rounded-2xl font-semibold bg-gradient-to-r from-violet-600 to-cyan-400 text-black hover:opacity-95">
+      Войти в игру
+    </button>
+
+    <p class="text-xs text-[color:var(--sj-muted)] mt-3">
+      Потом этот файл можно убрать, когда логин полностью завершишь.
+    </p>
+  </div>
+</div>
+
+<script>
+  function performLogin() {
+    const username = document.getElementById('usernameInput').value;
+    if (username) window.location.href = `/login/${username}`;
+    else alert('Введите имя пользователя');
+  }
+  document.getElementById('usernameInput').addEventListener("keypress", function(event) {
+    if (event.key === "Enter") performLogin();
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% set title = "Регистрация — Sales Journey" %}
+
+{% block content %}
+<div class="fixed inset-0 overflow-hidden pointer-events-none">
+    <div class="absolute top-[-10%] left-[-10%] w-96 h-96 bg-purple-600/20 rounded-full blur-[100px] animate-pulse"></div>
+    <div class="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-cyan-600/10 rounded-full blur-[100px]"></div>
+</div>
+
+<section class="min-h-screen flex items-center justify-center relative z-10 p-4">
+  <div class="w-full max-w-[420px]">
+
+    <div class="text-center mb-8">
+        <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-white/10 mb-4 shadow-[0_0_30px_rgba(99,102,241,0.3)]">
+            <i class="fa-solid fa-user-plus text-2xl text-white"></i>
+        </div>
+        <h1 class="text-3xl font-bold text-white tracking-tight">Создание аккаунта</h1>
+        <p class="text-[color:var(--sj-muted)] mt-2">Введи инвайт-код от компании</p>
+    </div>
+
+    <div class="rounded-3xl border border-[color:var(--sj-border)] bg-[#111827]/80 backdrop-blur-xl p-8 shadow-2xl relative overflow-hidden">
+      <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-cyan-500 via-purple-500 to-indigo-500"></div>
+
+      <form action="{{ url_for('register') }}" method="POST" class="space-y-5">
+
+        <div class="space-y-1.5">
+          <label class="text-xs font-semibold text-[color:var(--sj-muted)] uppercase tracking-wider ml-1">Код компании</label>
+          <div class="relative group">
+            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+              <i class="fa-solid fa-ticket text-[color:var(--sj-muted)] group-focus-within:text-white transition-colors"></i>
+            </div>
+            <input type="text" name="company_code" required
+                   class="w-full pl-11 pr-4 py-3.5 bg-black/20 border border-[color:var(--sj-border)] rounded-xl text-white placeholder-white/20 focus:outline-none focus:border-indigo-500 focus:bg-white/5 transition-all shadow-inner font-mono tracking-wider uppercase"
+                   placeholder="XXXX-XXXX">
+          </div>
+        </div>
+
+        <div class="space-y-1.5">
+            <label class="text-xs font-semibold text-[color:var(--sj-muted)] uppercase tracking-wider ml-1">Имя</label>
+            <div class="relative group">
+              <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                <i class="fa-regular fa-user text-[color:var(--sj-muted)] group-focus-within:text-white transition-colors"></i>
+              </div>
+              <input type="text" name="username" required
+                     class="w-full pl-11 pr-4 py-3.5 bg-black/20 border border-[color:var(--sj-border)] rounded-xl text-white placeholder-white/20 focus:outline-none focus:border-indigo-500 focus:bg-white/5 transition-all shadow-inner"
+                     placeholder="Иван Петров">
+            </div>
+        </div>
+
+        <div class="space-y-1.5">
+            <label class="text-xs font-semibold text-[color:var(--sj-muted)] uppercase tracking-wider ml-1">Email</label>
+            <div class="relative group">
+              <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                <i class="fa-regular fa-envelope text-[color:var(--sj-muted)] group-focus-within:text-white transition-colors"></i>
+              </div>
+              <input type="email" name="email" required
+                     class="w-full pl-11 pr-4 py-3.5 bg-black/20 border border-[color:var(--sj-border)] rounded-xl text-white placeholder-white/20 focus:outline-none focus:border-indigo-500 focus:bg-white/5 transition-all shadow-inner"
+                     placeholder="user@company.com">
+            </div>
+        </div>
+
+        <div class="space-y-1.5">
+          <label class="text-xs font-semibold text-[color:var(--sj-muted)] uppercase tracking-wider ml-1">Пароль</label>
+          <div class="relative group">
+            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+              <i class="fa-solid fa-lock text-[color:var(--sj-muted)] group-focus-within:text-white transition-colors"></i>
+            </div>
+            <input type="password" name="password" id="regPwd" required
+                   class="w-full pl-11 pr-12 py-3.5 bg-black/20 border border-[color:var(--sj-border)] rounded-xl text-white placeholder-white/20 focus:outline-none focus:border-indigo-500 focus:bg-white/5 transition-all shadow-inner"
+                   placeholder="••••••••">
+
+            <button type="button"
+                    class="absolute right-0 top-0 h-full px-4 text-[color:var(--sj-muted)] hover:text-white transition-colors"
+                    onclick="toggleRegPwd()">
+              <i class="fa-regular fa-eye" id="regEye"></i>
+            </button>
+          </div>
+        </div>
+
+        <button type="submit"
+                class="w-full py-4 rounded-xl font-bold text-white bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 shadow-[0_10px_20px_-10px_rgba(79,70,229,0.5)] transform hover:-translate-y-0.5 transition-all duration-200 mt-2">
+          Зарегистрироваться
+        </button>
+
+      </form>
+
+      <div class="mt-8 pt-6 border-t border-[color:var(--sj-border)] text-center">
+        <p class="text-sm text-[color:var(--sj-muted)]">
+          Уже есть аккаунт?
+          <a href="{{ url_for('login') }}" class="text-white font-medium hover:underline decoration-indigo-500 underline-offset-4">Войти</a>
+        </p>
+      </div>
+    </div>
+
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function toggleRegPwd() {
+    const input = document.getElementById('regPwd');
+    const icon = document.getElementById('regEye');
+
+    if (input.type === 'password') {
+      input.type = 'text';
+      icon.classList.remove('fa-eye');
+      icon.classList.add('fa-eye-slash');
+    } else {
+      input.type = 'password';
+      icon.classList.remove('fa-eye-slash');
+      icon.classList.add('fa-eye');
+    }
+  }
+</script>
+{% endblock %}

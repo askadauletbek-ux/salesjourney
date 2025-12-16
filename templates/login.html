@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% set title = "Вход — Sales Journey" %}
+
+{% block content %}
+<section class="min-h-[70vh] grid place-items-center">
+  <div class="w-full max-w-md">
+    <div class="rounded-2xl border border-[color:var(--sj-border)] bg-white/5 p-6 shadow-[var(--sj-shadow)]">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <h1 class="text-2xl font-extrabold tracking-tight">Вход</h1>
+          <p class="text-sm text-[color:var(--sj-muted)] mt-1">
+            Для партнёров, владельцев и админов. Сотрудники входят через код компании.
+          </p>
+        </div>
+        <div class="w-12 h-12 rounded-2xl bg-white/5 border border-[color:var(--sj-border)] grid place-items-center">
+          <i class="fa-solid fa-shield-halved text-[color:var(--sj-cyan)] text-lg"></i>
+        </div>
+      </div>
+
+      <form action="/login" method="POST" class="mt-5 space-y-3">
+        <div>
+          <label class="text-sm font-medium">Email или логин</label>
+          <input name="identity" required
+                 class="mt-1 w-full px-3 py-2 rounded-2xl bg-white/5 border border-[color:var(--sj-border)]
+                        focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+                 placeholder="partner@company.com">
+        </div>
+
+        <div>
+          <label class="text-sm font-medium">Пароль</label>
+          <div class="relative">
+            <input type="password" name="password" id="pwd" required
+                   class="mt-1 w-full pr-12 px-3 py-2 rounded-2xl bg-white/5 border border-[color:var(--sj-border)]
+                          focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+                   placeholder="••••••••">
+            <button type="button"
+                    class="absolute right-2 top-[50%] -translate-y-[50%] w-9 h-9 rounded-2xl bg-white/5 border border-[color:var(--sj-border)] hover:bg-white/10"
+                    onclick="togglePwd()">
+              <i class="fa-solid fa-eye text-white/70"></i>
+            </button>
+          </div>
+        </div>
+
+        <button type="submit"
+                class="w-full py-2.5 rounded-2xl font-semibold bg-gradient-to-r from-violet-600 to-cyan-400 text-black hover:opacity-95">
+          Войти
+        </button>
+
+        <div class="rounded-2xl border border-[color:var(--sj-border)] bg-black/20 p-4">
+          <div class="text-xs text-[color:var(--sj-muted)]">
+            Если это первый вход с временным паролем — система сразу отправит на смену пароля.
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <div class="mt-3 text-center text-xs text-[color:var(--sj-muted)]">
+      Вернуться на <a href="/" class="text-white/90 hover:underline">главную</a>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function togglePwd(){
+    const i = document.getElementById('pwd');
+    i.type = (i.type === 'password') ? 'text' : 'password';
+  }
+</script>
+{% endblock %}

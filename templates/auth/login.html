@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% set title = "Вход в систему — Sales Journey" %}
+
+{% block content %}
+<div class="fixed inset-0 overflow-hidden pointer-events-none">
+    <div class="absolute top-[-10%] left-[-10%] w-96 h-96 bg-purple-600/20 rounded-full blur-[100px] animate-pulse"></div>
+    <div class="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-cyan-600/10 rounded-full blur-[100px]"></div>
+</div>
+
+<section class="min-h-screen flex items-center justify-center relative z-10 p-4">
+  <div class="w-full max-w-[420px]">
+
+    <div class="text-center mb-8">
+        <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-white/10 mb-4 shadow-[0_0_30px_rgba(99,102,241,0.3)]">
+            <i class="fa-solid fa-rocket text-2xl text-white"></i>
+        </div>
+        <h1 class="text-3xl font-bold text-white tracking-tight">Sales Journey</h1>
+        <p class="text-[color:var(--sj-muted)] mt-2">Войдите, чтобы продолжить путь</p>
+    </div>
+
+    <div class="rounded-3xl border border-[color:var(--sj-border)] bg-[#111827]/80 backdrop-blur-xl p-8 shadow-2xl relative overflow-hidden">
+      <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-500"></div>
+
+      <form action="{{ url_for('login') }}" method="POST" class="space-y-5">
+
+        <div class="space-y-1.5">
+          <label class="text-xs font-semibold text-[color:var(--sj-muted)] uppercase tracking-wider ml-1">Email или Логин</label>
+          <div class="relative group">
+            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+              <i class="fa-regular fa-user text-[color:var(--sj-muted)] group-focus-within:text-white transition-colors"></i>
+            </div>
+            <input type="text" name="email" required
+                   class="w-full pl-11 pr-4 py-3.5 bg-black/20 border border-[color:var(--sj-border)] rounded-xl text-white placeholder-white/20 focus:outline-none focus:border-indigo-500 focus:bg-white/5 transition-all shadow-inner"
+                   placeholder="admin или user@company.com">
+          </div>
+        </div>
+
+        <div class="space-y-1.5">
+          <label class="text-xs font-semibold text-[color:var(--sj-muted)] uppercase tracking-wider ml-1">Пароль</label>
+          <div class="relative group">
+            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+              <i class="fa-solid fa-lock text-[color:var(--sj-muted)] group-focus-within:text-white transition-colors"></i>
+            </div>
+            <input type="password" name="password" id="pwd" required
+                   class="w-full pl-11 pr-12 py-3.5 bg-black/20 border border-[color:var(--sj-border)] rounded-xl text-white placeholder-white/20 focus:outline-none focus:border-indigo-500 focus:bg-white/5 transition-all shadow-inner"
+                   placeholder="••••••••">
+
+            <button type="button"
+                    class="absolute right-0 top-0 h-full px-4 text-[color:var(--sj-muted)] hover:text-white transition-colors"
+                    onclick="togglePwd()">
+              <i class="fa-regular fa-eye" id="eyeIcon"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between pt-1">
+            <label class="flex items-center cursor-pointer group">
+                <input type="checkbox" name="remember" class="peer sr-only">
+                <div class="w-5 h-5 border-2 border-[color:var(--sj-border)] rounded-md peer-checked:bg-indigo-600 peer-checked:border-indigo-600 transition-colors flex items-center justify-center">
+                    <i class="fa-solid fa-check text-white text-xs opacity-0 peer-checked:opacity-100"></i>
+                </div>
+                <span class="ml-2 text-sm text-[color:var(--sj-muted)] group-hover:text-white transition-colors">Запомнить</span>
+            </label>
+            <a href="#" class="text-sm text-indigo-400 hover:text-indigo-300 transition-colors">Забыли пароль?</a>
+        </div>
+
+        <button type="submit"
+                class="w-full py-4 rounded-xl font-bold text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 shadow-[0_10px_20px_-10px_rgba(79,70,229,0.5)] transform hover:-translate-y-0.5 transition-all duration-200">
+          Войти в систему
+        </button>
+
+      </form>
+
+      <div class="mt-8 pt-6 border-t border-[color:var(--sj-border)] text-center">
+        <p class="text-sm text-[color:var(--sj-muted)]">
+          Нет аккаунта?
+          <a href="{{ url_for('register') }}" class="text-white font-medium hover:underline decoration-indigo-500 underline-offset-4">Регистрация сотрудника</a>
+        </p>
+      </div>
+    </div>
+
+    <div class="mt-8 text-center opacity-40 hover:opacity-100 transition-opacity">
+        <p class="text-xs text-white">© 2024 Sales Journey. Secure Enterprise Access.</p>
+    </div>
+
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function togglePwd() {
+    const input = document.getElementById('pwd');
+    const icon = document.getElementById('eyeIcon');
+
+    if (input.type === 'password') {
+      input.type = 'text';
+      icon.classList.remove('fa-eye');
+      icon.classList.add('fa-eye-slash');
+    } else {
+      input.type = 'password';
+      icon.classList.remove('fa-eye-slash');
+      icon.classList.add('fa-eye');
+    }
+  }
+</script>
+{% endblock %}

@@ -1,0 +1,374 @@
+{% extends "base.html" %}
+{% set title = "Dashboard — Sales Journey" %}
+
+{% block content %}
+<div x-data="gameDashboard()" x-init="initDashboard()" class="relative">
+
+  <div class="mb-8 flex flex-col sm:flex-row sm:items-end justify-between gap-4 animate-fade-in-down">
+    <div>
+      <h1 class="text-3xl sm:text-4xl font-black tracking-tight text-white mb-2">
+        Центр управления
+      </h1>
+      <p class="text-base text-[color:var(--sj-muted)]">
+        Твой прогресс и ежедневные решения.
+      </p>
+    </div>
+
+    <button @click="initDashboard()"
+            class="p-2 rounded-xl hover:bg-white/5 text-[color:var(--sj-muted)] hover:text-white transition-colors"
+            title="Обновить данные">
+      <i class="fa-solid fa-rotate-right" :class="{'fa-spin': loading}"></i>
+    </button>
+  </div>
+
+  <div class="grid md:grid-cols-3 gap-6 mb-10">
+
+    <div class="relative group overflow-hidden rounded-3xl border border-[color:var(--sj-border)] bg-[#101524] p-6 shadow-lg hover:shadow-[0_0_30px_rgba(124,58,237,0.15)] transition-all duration-300">
+      <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+        <i class="fa-solid fa-crown text-8xl text-white transform rotate-12 group-hover:scale-110 transition-transform"></i>
+      </div>
+
+      <div class="relative z-10 flex flex-col h-full justify-between">
+        <div>
+          <div class="flex items-center gap-3 mb-2">
+             <div class="w-8 h-8 rounded-lg bg-violet-500/20 flex items-center justify-center text-violet-400">
+               <i class="fa-solid fa-star text-sm"></i>
+             </div>
+             <span class="text-sm font-bold uppercase tracking-wider text-[color:var(--sj-muted)]">Уровень</span>
+          </div>
+          <div class="text-5xl font-black text-white tracking-tighter">
+            <span x-text="stats.level">1</span>
+          </div>
+        </div>
+
+        <div class="mt-6">
+          <div class="flex justify-between text-xs font-semibold text-[color:var(--sj-muted)] mb-2">
+            <span>XP Прогресс</span>
+            <span x-text="`${stats.xp % 1000} / 1000`">0 / 1000</span>
+          </div>
+          <div class="h-2.5 rounded-full bg-white/5 border border-white/5 overflow-hidden">
+            <div class="h-full bg-gradient-to-r from-violet-600 to-fuchsia-500 shadow-[0_0_10px_rgba(124,58,237,0.5)] transition-all duration-1000"
+                 :style="`width: ${(stats.xp % 1000) / 10}%`"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="relative group overflow-hidden rounded-3xl border border-[color:var(--sj-border)] bg-[#101524] p-6 shadow-lg hover:shadow-[0_0_30px_rgba(251,191,36,0.15)] transition-all duration-300">
+      <div class="absolute -bottom-4 -right-4 opacity-10 group-hover:opacity-20 transition-opacity">
+        <i class="fa-solid fa-coins text-9xl text-[color:var(--sj-amber)] transform -rotate-12"></i>
+      </div>
+
+      <div class="relative z-10 flex flex-col h-full justify-between">
+        <div>
+          <div class="flex items-center gap-3 mb-2">
+             <div class="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center text-[color:var(--sj-amber)]">
+               <i class="fa-solid fa-wallet text-sm"></i>
+             </div>
+             <span class="text-sm font-bold uppercase tracking-wider text-[color:var(--sj-muted)]">Баланс</span>
+          </div>
+          <div class="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-200 to-amber-500 tracking-tighter"
+               x-text="stats.coins">
+            0
+          </div>
+        </div>
+
+        <a href="/shop" class="mt-6 inline-flex items-center justify-center w-full py-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-[color:var(--sj-amber)] font-bold transition-all group-hover:translate-x-1">
+          В магазин <i class="fa-solid fa-arrow-right ml-2"></i>
+        </a>
+      </div>
+    </div>
+
+    <div class="relative group overflow-hidden rounded-3xl border border-[color:var(--sj-border)] bg-[#101524] p-6 shadow-lg hover:shadow-[0_0_30px_rgba(251,113,133,0.15)] transition-all duration-300">
+      <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-rose-500/20 blur-[60px] rounded-full"></div>
+
+      <div class="relative z-10 text-center flex flex-col items-center justify-center h-full">
+        <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-rose-500/20 to-orange-500/20 border border-rose-500/30 flex items-center justify-center mb-3 shadow-[0_0_20px_rgba(244,63,94,0.2)] group-hover:scale-110 transition-transform duration-500">
+          <i class="fa-solid fa-fire text-3xl text-[color:var(--sj-rose)] animate-pulse"></i>
+        </div>
+        <div class="text-4xl font-black text-white mb-1">
+          <span x-text="stats.streak">0</span> дней
+        </div>
+        <div class="text-xs font-bold uppercase tracking-widest text-[color:var(--sj-muted)]">Серия побед</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mb-4 flex items-center justify-between">
+    <h2 class="text-xl font-bold text-white flex items-center gap-2">
+      <i class="fa-solid fa-chess-knight text-violet-400"></i>
+      Стратегия на сегодня
+    </h2>
+    <div class="text-xs font-medium px-3 py-1 rounded-full bg-white/5 border border-white/10 text-[color:var(--sj-muted)]">
+      <span x-show="!currentBuff">Ожидание выбора</span>
+      <span x-show="currentBuff" class="text-[color:var(--sj-emerald)]">Выбор сделан</span>
+    </div>
+  </div>
+
+  <div class="grid lg:grid-cols-3 gap-6">
+
+    <button @click="chooseBuff('SHARK')"
+            :disabled="loading || currentBuff"
+            class="relative group text-left rounded-3xl border p-6 transition-all duration-500 ease-out overflow-hidden"
+            :class="getCardClass('SHARK')">
+
+      <div class="absolute inset-0 bg-gradient-to-br from-[#1e1b4b] to-[#0f172a] opacity-80 group-hover:opacity-100 transition-opacity"></div>
+      <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(99,102,241,0.15),transparent_50%)]"></div>
+
+      <div class="relative z-10">
+        <div class="flex items-start justify-between mb-6">
+          <div class="w-14 h-14 rounded-2xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+            <i class="fa-solid fa-shark text-2xl text-indigo-400"></i>
+          </div>
+          <div x-show="currentBuff === 'SHARK'"
+               class="px-3 py-1 rounded-lg bg-yellow-500 text-black text-xs font-bold uppercase tracking-wide shadow-[0_0_15px_rgba(234,179,8,0.6)]">
+             Активно
+          </div>
+        </div>
+
+        <h3 class="text-2xl font-bold text-white mb-1 group-hover:text-indigo-300 transition-colors">Акула</h3>
+        <p class="text-sm text-indigo-200/60 mb-6 h-10">
+          Агрессивная тактика для закрытия крупных сделок.
+        </p>
+
+        <div class="space-y-2">
+          <div class="flex items-center justify-between p-3 rounded-xl bg-black/40 border border-white/5 backdrop-blur-sm">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                <i class="fa-solid fa-money-bill-wave text-emerald-400 text-xs"></i>
+              </div>
+              <span class="text-sm font-medium text-white/80">Продажи</span>
+            </div>
+            <span class="text-sm font-bold text-emerald-400">x1.5 XP</span>
+          </div>
+
+          <div class="flex items-center justify-between p-3 rounded-xl bg-black/40 border border-white/5 backdrop-blur-sm">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-rose-500/10 flex items-center justify-center">
+                <i class="fa-solid fa-phone text-rose-400 text-xs"></i>
+              </div>
+              <span class="text-sm font-medium text-white/80">Звонки</span>
+            </div>
+            <span class="text-sm font-bold text-rose-400">x0.5 XP</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="absolute inset-0 border-2 border-indigo-500/0 rounded-3xl group-hover:border-indigo-500/50 transition-colors pointer-events-none"
+           :class="{'!border-yellow-400 !shadow-[inset_0_0_20px_rgba(250,204,21,0.2)]': currentBuff === 'SHARK'}"></div>
+    </button>
+
+
+    <button @click="chooseBuff('WOODPECKER')"
+            :disabled="loading || currentBuff"
+            class="relative group text-left rounded-3xl border p-6 transition-all duration-500 ease-out overflow-hidden"
+            :class="getCardClass('WOODPECKER')">
+
+      <div class="absolute inset-0 bg-gradient-to-br from-[#4c0519] to-[#0f172a] opacity-80 group-hover:opacity-100 transition-opacity"></div>
+      <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(244,63,94,0.15),transparent_50%)]"></div>
+
+      <div class="relative z-10">
+        <div class="flex items-start justify-between mb-6">
+          <div class="w-14 h-14 rounded-2xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+            <i class="fa-solid fa-hammer text-2xl text-rose-400"></i>
+          </div>
+          <div x-show="currentBuff === 'WOODPECKER'"
+               class="px-3 py-1 rounded-lg bg-yellow-500 text-black text-xs font-bold uppercase tracking-wide shadow-[0_0_15px_rgba(234,179,8,0.6)]">
+             Активно
+          </div>
+        </div>
+
+        <h3 class="text-2xl font-bold text-white mb-1 group-hover:text-rose-300 transition-colors">Дятел</h3>
+        <p class="text-sm text-rose-200/60 mb-6 h-10">
+          Упорство и количество. Берем измором.
+        </p>
+
+        <div class="space-y-2">
+          <div class="flex items-center justify-between p-3 rounded-xl bg-black/40 border border-white/5 backdrop-blur-sm">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                <i class="fa-solid fa-phone text-emerald-400 text-xs"></i>
+              </div>
+              <span class="text-sm font-medium text-white/80">Звонки</span>
+            </div>
+            <span class="text-sm font-bold text-emerald-400">x1.5 XP</span>
+          </div>
+
+          <div class="flex items-center justify-between p-3 rounded-xl bg-black/40 border border-white/5 backdrop-blur-sm">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-rose-500/10 flex items-center justify-center">
+                <i class="fa-solid fa-money-bill-wave text-rose-400 text-xs"></i>
+              </div>
+              <span class="text-sm font-medium text-white/80">Продажи</span>
+            </div>
+            <span class="text-sm font-bold text-rose-400">x0.5 XP</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="absolute inset-0 border-2 border-rose-500/0 rounded-3xl group-hover:border-rose-500/50 transition-colors pointer-events-none"
+           :class="{'!border-yellow-400 !shadow-[inset_0_0_20px_rgba(250,204,21,0.2)]': currentBuff === 'WOODPECKER'}"></div>
+    </button>
+
+
+    <button @click="chooseBuff('ZEN')"
+            :disabled="loading || currentBuff"
+            class="relative group text-left rounded-3xl border p-6 transition-all duration-500 ease-out overflow-hidden"
+            :class="getCardClass('ZEN')">
+
+      <div class="absolute inset-0 bg-gradient-to-br from-[#064e3b] to-[#0f172a] opacity-80 group-hover:opacity-100 transition-opacity"></div>
+      <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(52,211,153,0.15),transparent_50%)]"></div>
+
+      <div class="relative z-10">
+        <div class="flex items-start justify-between mb-6">
+          <div class="w-14 h-14 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+            <i class="fa-solid fa-yin-yang text-2xl text-emerald-400"></i>
+          </div>
+          <div x-show="currentBuff === 'ZEN'"
+               class="px-3 py-1 rounded-lg bg-yellow-500 text-black text-xs font-bold uppercase tracking-wide shadow-[0_0_15px_rgba(234,179,8,0.6)]">
+             Активно
+          </div>
+        </div>
+
+        <h3 class="text-2xl font-bold text-white mb-1 group-hover:text-emerald-300 transition-colors">Дзен</h3>
+        <p class="text-sm text-emerald-200/60 mb-6 h-10">
+          Идеальный баланс. Никаких рисков и штрафов.
+        </p>
+
+        <div class="space-y-2">
+          <div class="flex items-center justify-between p-3 rounded-xl bg-black/40 border border-white/5 backdrop-blur-sm">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center">
+                <i class="fa-solid fa-scale-balanced text-white/80 text-xs"></i>
+              </div>
+              <span class="text-sm font-medium text-white/80">Стабильность</span>
+            </div>
+            <span class="text-sm font-bold text-white">x1.0 XP</span>
+          </div>
+
+          <div class="p-3 opacity-0 pointer-events-none">Spacer</div>
+        </div>
+      </div>
+
+      <div class="absolute inset-0 border-2 border-emerald-500/0 rounded-3xl group-hover:border-emerald-500/50 transition-colors pointer-events-none"
+           :class="{'!border-yellow-400 !shadow-[inset_0_0_20px_rgba(250,204,21,0.2)]': currentBuff === 'ZEN'}"></div>
+    </button>
+
+  </div>
+
+  <div x-show="loading"
+       x-transition.opacity
+       class="absolute inset-0 bg-[#070b16]/50 backdrop-blur-sm z-50 flex items-center justify-center rounded-3xl">
+    <div class="flex flex-col items-center">
+      <i class="fa-solid fa-circle-notch fa-spin text-4xl text-[color:var(--sj-primary)]"></i>
+      <span class="mt-2 text-sm font-semibold text-white">Применяем стратегию...</span>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function gameDashboard() {
+    return {
+      loading: false,
+      currentBuff: null,
+      stats: {
+        coins: {{ user.gamification_profile.coins or 0 }},
+        xp: {{ user.gamification_profile.xp or 0 }},
+        streak: {{ user.gamification_profile.current_streak or 0 }},
+        level: {{ (user.gamification_profile.xp // 1000) + 1 }}
+      },
+
+      initDashboard() {
+        this.fetchStatus();
+      },
+
+      // Определение классов для карточек (активная, неактивная, обычная)
+      getCardClass(type) {
+        if (this.currentBuff === type) {
+          // Выбрана ЭТА стратегия
+          return 'border-yellow-500/50 bg-white/5 scale-[1.02] shadow-[0_0_50px_rgba(234,179,8,0.15)] ring-1 ring-yellow-500/30 cursor-default';
+        } else if (this.currentBuff && this.currentBuff !== type) {
+          // Выбрана ДРУГАЯ стратегия (затемняем эту)
+          return 'border-[color:var(--sj-border)] bg-[#0a0f1c] opacity-40 grayscale cursor-not-allowed';
+        } else {
+          // Ничего не выбрано (доступна для выбора)
+          return 'border-[color:var(--sj-border)] bg-[#101524] hover:bg-[#151b2e] cursor-pointer hover:-translate-y-1';
+        }
+      },
+
+      async fetchStatus() {
+        try {
+          const res = await fetch('/api/game/status');
+          if (res.ok) {
+            const data = await res.json();
+            this.stats.coins = data.coins;
+            this.stats.xp = data.xp;
+            this.stats.streak = data.streak;
+            this.stats.level = data.level;
+            // API возвращает строку типа 'SHARK', 'ZEN' и т.д. или null
+            this.currentBuff = data.today_buff;
+          }
+        } catch (e) {
+          console.error("Failed to fetch status", e);
+        }
+      },
+
+      async chooseBuff(type) {
+        if (this.currentBuff) return; // Защита от повторного клика
+
+        this.loading = true;
+        try {
+          const response = await fetch('/api/game/buff/choose', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ buff_type: type })
+          });
+
+          const result = await response.json();
+
+          if (response.ok) {
+            // Успех!
+            this.currentBuff = type; // Мгновенно обновляем UI
+
+            // Вызываем Toast из Alpine Store (определен в base.html)
+            Alpine.store('toasts').push({
+              title: 'Стратегия активирована!',
+              text: result.message || `Режим ${type} включен`,
+              tone: 'ok',
+              icon: 'fa-solid fa-check-double'
+            });
+
+            // Обновляем статистику (стрик мог измениться)
+            if (result.streak !== undefined) this.stats.streak = result.streak;
+
+            // Небольшая задержка перед обновлением страницы (опционально),
+            // но в данном дизайне мы уже обновили стейт, перезагрузка не обязательна.
+            // Однако, чтобы пересчитать возможные серверные данные, можно обновить фон.
+            setTimeout(() => { this.loading = false; }, 500);
+
+          } else {
+            // Ошибка API
+            Alpine.store('toasts').push({
+              title: 'Ошибка',
+              text: result.error || 'Не удалось применить стратегию',
+              tone: 'err'
+            });
+            this.loading = false;
+          }
+        } catch (e) {
+          console.error(e);
+          Alpine.store('toasts').push({
+            title: 'Ошибка сети',
+            text: 'Проверьте соединение с интернетом',
+            tone: 'err'
+          });
+          this.loading = false;
+        }
+      }
+    }
+  }
+</script>
+{% endblock %}
