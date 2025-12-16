@@ -666,8 +666,8 @@ def amocrm_callback(company_id: int):
 @login_required
 def sync_my_daily_stats():
     """
-    ФИНАЛЬНАЯ ВЕРСИЯ (SIPUNI FIX):
-    Считает звонки, сохраненные как Примечания (Notes) типов call_in/call_out.
+    FIXED SIPUNI: Ищет события типа 'note' (примечание), проверяет,
+    являются ли они звонками (call_in/call_out) и суммирует длительность.
     """
     user = current_user
     today = datetime.date.today()
@@ -692,24 +692,23 @@ def sync_my_daily_stats():
         return jsonify({"error": "Company integration not active"}), 400
 
     try:
-        # 1. Настройка времени (UTC correction)
-        # Берем начало дня по UTC и отнимаем 3 часа для надежности (чтобы захватить утро)
+        # 1. Время начала дня
+        # Используем UTC timestamp с коррекцией на часовой пояс (например, -3 часа),
+        # чтобы гарантированно захватить утро.
         start_of_day_utc = int(datetime.datetime.combine(today, datetime.time.min).timestamp())
         start_of_day_safe = start_of_day_utc - 10800
 
         my_amo_id = mapping.amocrm_user_id
 
-        # --- 2. СБОР ЗВОНКОВ (Через Events -> Notes) ---
+        # --- 2. СБОР ЗВОНКОВ (Через Events -> Note Created) ---
         calls_count = 0
         talk_seconds = 0
 
-        # Запрашиваем события типов call_in и call_out
+        # Запрашиваем события создания примечаний ("note")
         params_events = {
             "filter[created_at][from]": start_of_day_safe,
-            "filter[type][0]": "call_in",
-            "filter[type][1]": "call_out",
+            "filter[type]": "note",  # <--- ВАЖНО: Ищем именно события примечаний
             "limit": 100
-            # Максимум 100 событий за раз (если звонков больше, нужна пагинация, но для дашборда пока хватит)
         }
 
         r_ev = _amo_get(conn.base_domain, conn.access_token, "/api/v4/events", params_events)
@@ -718,32 +717,43 @@ def sync_my_daily_stats():
             events = r_ev.json().get("_embedded", {}).get("events", [])
 
             for ev in events:
-                # Проверяем, кто создал событие (кто звонил)
+                # 1. Проверяем, кто создал примечание (кто звонил)
                 creator_id = int(ev.get("created_by") or 0)
+                if creator_id != my_amo_id:
+                    continue
 
-                if creator_id == my_amo_id:
-                    # Это наш звонок
+                # 2. Разбираем содержимое события (value_after)
+                # Там лежит структура примечания
+                vals_after = ev.get("value_after", [])
+                if not vals_after:
+                    continue
+
+                # Обычно это список, берем первый элемент
+                note_wrapper = vals_after[0] if isinstance(vals_after, list) else vals_after
+                note_data = note_wrapper.get("note", {})
+
+                # 3. Проверяем тип примечания (call_out / call_in)
+                # SIPUNI пишет типы текстом "call_out"/"call_in" или кодами 10/11
+                note_type = str(note_data.get("note_type", ""))
+
+                if note_type in ["call_in", "call_out", "10", "11", "12", "13"]:
                     calls_count += 1
 
-                    # Пытаемся достать длительность
-                    # В событиях Notes данные лежат в value_after -> note -> params -> duration
+                    # 4. Достаем длительность
+                    params = note_data.get("params", {})
+                    # Иногда duration приходит строкой, иногда числом
                     try:
-                        val_after = ev.get("value_after", [])
-                        # value_after может быть списком или словарем в зависимости от версии API
-                        if isinstance(val_after, list) and len(val_after) > 0:
-                            note_data = val_after[0].get("note", {})
-                            params = note_data.get("params", {})
-                            duration = int(params.get("duration", 0))
-                            talk_seconds += duration
-                    except Exception:
-                        pass  # Если структура другая, просто пропускаем длительность
+                        dur = int(params.get("duration", 0))
+                        talk_seconds += dur
+                    except (ValueError, TypeError):
+                        pass
 
         # --- 3. СБОР СДЕЛОК (Стандартно) ---
         leads_created = 0
         leads_won = 0
         leads_lost = 0
 
-        # Созданные сделки
+        # Созданные
         r_cr = _amo_get(conn.base_domain, conn.access_token, "/api/v4/leads", {
             "filter[created_at][from]": start_of_day_safe,
             "filter[responsible_user_id]": my_amo_id,
@@ -752,7 +762,7 @@ def sync_my_daily_stats():
         if r_cr.status_code == 200:
             leads_created = len(r_cr.json().get("_embedded", {}).get("leads", []))
 
-        # Закрытые сделки
+        # Закрытые (Успех/Провал)
         r_cl = _amo_get(conn.base_domain, conn.access_token, "/api/v4/leads", {
             "filter[closed_at][from]": start_of_day_safe,
             "filter[responsible_user_id]": my_amo_id,
