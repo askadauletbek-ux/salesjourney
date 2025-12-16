@@ -31,6 +31,8 @@ def create_app():
     # --- Инициализация расширений ---
     db.init_app(app)
     login_manager.init_app(app)
+    socketio.init_app(app)  # <--- ДОБАВИТЬ ЭТУ СТРОКУ ОБЯЗАТЕЛЬНО
+
     login_manager.login_view = 'login'
 
     # --- User Loader (для Flask-Login) ---
