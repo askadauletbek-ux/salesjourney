@@ -364,4 +364,4 @@ def create_app():
 if __name__ == '__main__':
     app = create_app()
     # Используем socketio.run вместо app.run для поддержки веб-сокетов
-    socketio.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=True)
+    socketio.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=True, allow_unsafe_werkzeug=True)
