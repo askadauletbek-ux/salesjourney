@@ -666,8 +666,7 @@ def amocrm_callback(company_id: int):
 @login_required
 def sync_my_daily_stats():
     """
-    Эндпоинт для обновления личной статистики пользователя за сегодня.
-    Специальная адаптация для SIPUNI: ищет звонки и как 'ответственный', и как 'создатель'.
+    DEBUG VERSION: Логирует запросы и использует запасной вариант через Events.
     """
     user = current_user
     today = datetime.date.today()
@@ -692,47 +691,95 @@ def sync_my_daily_stats():
         return jsonify({"error": "Company integration not active"}), 400
 
     try:
-        # AmoCRM хранит даты в Timestamp
-        start_of_day = int(datetime.datetime.combine(today, datetime.time.min).timestamp())
+        # 1. Корректировка времени (Timezone fix)
+        # Получаем начало дня по UTC и отнимаем 3 часа (10800 сек),
+        # чтобы захватить утро по Москве/Минску/Киеву, если сервер в UTC.
+        start_of_day_utc = int(datetime.datetime.combine(today, datetime.time.min).timestamp())
+        start_of_day_safe = start_of_day_utc - 10800
+
         amo_user_id = mapping.amocrm_user_id
 
-        # --- 1. СБОР ЗВОНКОВ (SIPUNI FIX) ---
-        # Нам нужно найти ВСЕ звонки менеджера.
-        # SIPUNI пишет исходящие в created_by, входящие в responsible_user_id.
+        # ЛОГИРОВАНИЕ (Смотрите в консоль, где запущен Flask)
+        print(f"--- DEBUG SYNC START for User {user.username} ---")
+        print(f"Amo User ID: {amo_user_id}")
+        print(f"Timestamp From: {start_of_day_safe} (Original UTC: {start_of_day_utc})")
+
+        # --- ПОПЫТКА 1: API ЗВОНКОВ (Calls) ---
         unique_calls = {}
 
         def get_calls(filter_key, filter_val):
             params = {
-                "filter[created_at][from]": start_of_day,
+                "filter[created_at][from]": start_of_day_safe,
                 f"filter[{filter_key}]": filter_val,
-                "limit": 250  # До 250 звонков за день (хватит для 99% случаев)
+                "limit": 250,
+                "with": "duration"
             }
-            # Делаем запрос
             r = _amo_get(conn.base_domain, conn.access_token, "/api/v4/calls", params)
+            # Лог ответа
+            print(f"Checking Calls ({filter_key}={filter_val}): Status {r.status_code}")
             if r.status_code == 200:
-                return r.json().get("_embedded", {}).get("calls", [])
+                data = r.json().get("_embedded", {}).get("calls", [])
+                print(f"Found {len(data)} calls")
+                return data
             return []
 
-        # Запрос А: Где менеджер "Ответственный" (обычно Входящие)
+        # Ищем и как ответственного, и как создателя
         for call in get_calls("responsible_user_id", amo_user_id):
             unique_calls[call["id"]] = call
-
-        # Запрос Б: Где менеджер "Создатель" (обычно Исходящие SIPUNI)
         for call in get_calls("created_by", amo_user_id):
             unique_calls[call["id"]] = call
 
-        # Считаем итоги (убирая дубликаты благодаря словарю unique_calls)
         calls_count = len(unique_calls)
         talk_seconds = sum(int(c.get("duration", 0)) for c in unique_calls.values())
 
-        # --- 2. СБОР СДЕЛОК (Как и было) ---
+        # --- ПОПЫТКА 2: API СОБЫТИЙ (Events) - Если звонки не найдены ---
+        # SIPUNI часто пишет звонки как события 'phone_call', 'call_out', 'call_in'
+        if calls_count == 0:
+            print("Calls list empty. Trying EVENTS API...")
+            params_events = {
+                "filter[created_at][from]": start_of_day_safe,
+                "filter[type]": "phone_call",  # Стандартный тип события звонка
+                # Иногда события привязаны к created_by (кто звонил), иногда к responsible_user_id сущности
+                # Попробуем фильтр по created_by, так как это действие пользователя
+                # Примечание: фильтр по responsible_user_id в events работает не везде
+            }
+
+            # API Events не всегда дает фильтровать по юзеру.
+            # Запросим события типа phone_call и отфильтруем вручную в Python.
+            r_events = _amo_get(conn.base_domain, conn.access_token, "/api/v4/events", params_events)
+
+            if r_events.status_code == 200:
+                events_data = r_events.json().get("_embedded", {}).get("events", [])
+                print(f"Total phone_call events found: {len(events_data)}")
+
+                for ev in events_data:
+                    # Проверяем, относится ли событие к нашему юзеру
+                    # created_by - кто инициировал событие (звонок)
+                    # entity_id - ID звонка (иногда)
+
+                    creator_id = int(ev.get("created_by") or 0)
+
+                    if creator_id == amo_user_id:
+                        calls_count += 1
+                        # Пытаемся достать длительность
+                        # Обычно она в value_after (json) или value_before
+                        vals = ev.get("value_after", [])
+                        if vals and isinstance(vals, list):
+                            # Часто там лежит структура: [{"note": {"duration": 120...}}]
+                            for v in vals:
+                                note = v.get("note", {})
+                                if isinstance(note, dict):
+                                    talk_seconds += int(note.get("duration", 0))
+                print(f"Events matched to user: {calls_count}")
+
+        # --- 2. СДЕЛКИ (Leads) ---
         leads_created = 0
         leads_won = 0
         leads_lost = 0
 
-        # Созданные за сегодня
+        # Created Today
         params_created = {
-            "filter[created_at][from]": start_of_day,
+            "filter[created_at][from]": start_of_day_safe,
             "filter[responsible_user_id]": amo_user_id,
             "limit": 250
         }
@@ -740,9 +787,9 @@ def sync_my_daily_stats():
         if r_created.status_code == 200:
             leads_created = len(r_created.json().get("_embedded", {}).get("leads", []))
 
-        # Закрытые за сегодня
+        # Closed Today
         params_closed = {
-            "filter[closed_at][from]": start_of_day,
+            "filter[closed_at][from]": start_of_day_safe,
             "filter[responsible_user_id]": amo_user_id,
             "limit": 250
         }
@@ -756,7 +803,7 @@ def sync_my_daily_stats():
                 elif sid == LOST_STATUS_ID:
                     leads_lost += 1
 
-        # --- 3. СОХРАНЕНИЕ В БД ---
+        # 3. Сохранение
         stat_entry = db.session.execute(
             select(AmoCRMUserDailyStat).where(
                 and_(
@@ -778,6 +825,8 @@ def sync_my_daily_stats():
 
         db.session.commit()
 
+        print(f"--- DEBUG END: Saved {calls_count} calls, {talk_seconds} sec ---")
+
         return jsonify({
             "linked": True,
             "calls": stat_entry.calls_count,
@@ -788,6 +837,7 @@ def sync_my_daily_stats():
 
     except Exception as e:
         current_app.logger.error(f"Failed to sync user stats: {e}")
+        print(f"DEBUG ERROR: {e}")  # Вывод ошибки в консоль
         return jsonify({"error": "Sync failed", "details": str(e)}), 500
 
 @bp_amocrm_company_api.route("/<int:company_id>/crm/amocrm/sync", methods=["POST"])
