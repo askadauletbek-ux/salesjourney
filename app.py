@@ -1,10 +1,12 @@
 import os
 import uuid
 import secrets
+from datetime import date  # <--- Добавлен этот импорт
 from flask import Flask, render_template, redirect, url_for, request, flash, abort
 from flask_login import login_user, logout_user, current_user, login_required
 from sqlalchemy import or_
 from extensions import socketio
+from sqlalchemy import select, and_
 
 # Импорт расширений
 from extensions import db, login_manager
