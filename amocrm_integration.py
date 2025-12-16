@@ -112,7 +112,7 @@ def _amo_get(base_domain: str, access_token: str, path: str, params: Dict[str, A
     url = f"https://{base_domain}{path}"
     headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
     try:
-        return requests.get(url, headers=headers, params=params, timeout=20)
+        return requests.get(url, headers=headers, params=params, timeout=60)
     except requests.RequestException as e:
         current_app.logger.exception("AmoCRM API GET request failed")
         abort(503, description=f"Не удалось выполнить запрос к API AmoCRM: {e}")
