@@ -666,9 +666,10 @@ def amocrm_callback(company_id: int):
 @login_required
 def sync_my_daily_stats():
     """
-    DIAGNOSTIC V3 (FILTERED):
-    1. Фильтр на уровне API: filter[created_by] = user_id (чтобы отсечь лишнее).
-    2. Расширенное логирование первых 5 событий для понимания структуры.
+    SIPUNI NOTES FIX:
+    Ищем события создания примечаний (type='note').
+    Внутри события ищем структуру note -> note_type='call_out'/'call_in'.
+    Время: Алматы (UTC+5).
     """
     user = current_user
 
@@ -702,21 +703,21 @@ def sync_my_daily_stats():
 
     debug_log = [
         f"Almaty: {almaty_now}",
-        f"Filter From: {filter_timestamp}",
         f"Target UserID: {my_amo_id}"
     ]
 
     try:
-        # --- 2. СБОР ЗВОНКОВ ---
+        # --- 2. СБОР ЗВОНКОВ (Parsing Notes via Events) ---
         calls_count = 0
         talk_seconds = 0
 
-        # ДОБАВЛЕН ФИЛЬТР filter[created_by]
-        # Это заставит API вернуть события ТОЛЬКО этого юзера.
-        # Если звонки создает он (как мы видели в inspect_entity), мы их увидим.
+        # Запрашиваем события, созданные пользователем
+        # filter[type]=note - искать только создания примечаний
+        # filter[created_by] - только созданные этим менеджером
         params_events = {
             "filter[created_at][from]": filter_timestamp,
-            "filter[created_by][]": my_amo_id,  # <--- Фильтруем по автору
+            "filter[created_by][]": my_amo_id,
+            "filter[type]": "note",
             "limit": 100,
             "with": "note"
         }
@@ -725,51 +726,64 @@ def sync_my_daily_stats():
 
         if r_ev.status_code == 200:
             events = r_ev.json().get("_embedded", {}).get("events", [])
-            debug_log.append(f"Events loaded (filtered by user): {len(events)}")
+            debug_log.append(f"Notes events found: {len(events)}")
 
             for i, ev in enumerate(events):
-                # Логируем первые 5 событий полностью, чтобы понять, что приходит
-                ev_type = ev.get("type")
-
-                # Достаем Note
+                # Достаем содержимое (value_after)
                 vals = ev.get("value_after", [])
-                wrapper = vals[0] if isinstance(vals, list) and vals else (vals if isinstance(vals, dict) else {})
+
+                # Защита от разных форматов (список/словарь)
+                wrapper = {}
+                if isinstance(vals, list) and vals:
+                    wrapper = vals[0]
+                elif isinstance(vals, dict):
+                    wrapper = vals
+
+                # Вот здесь лежит ТОТ САМЫЙ ОБЪЕКТ, который вы прислали
                 note_data = wrapper.get("note", {})
-                note_type = str(note_data.get("note_type", "None"))
 
-                if i < 5:
-                    debug_log.append(f"#{i} Type: {ev_type}, NoteType: {note_type}, Creator: {ev.get('created_by')}")
+                if not note_data:
+                    continue
 
-                # Ищем звонки
-                if ev_type == "note" and note_data:
-                    if note_type in ["call_in", "call_out", "10", "11", "12", "13"]:
-                        params = note_data.get("params", {})
-                        dur = params.get("duration")
+                # Проверяем тип примечания (как в вашем JSON)
+                # "note_type": "call_out"
+                n_type = str(note_data.get("note_type", ""))
 
-                        # Иногда duration это строка, иногда число, иногда None
-                        # Важно: иногда SIPUNI пишет duration: null, но link есть. Считаем за звонок.
-                        has_link = bool(params.get("link") or params.get("record_link"))
+                # Список типов SIPUNI (call_out, call_in, и их цифровые коды)
+                if n_type in ["call_out", "call_in", "10", "11", "12", "13"]:
 
-                        if dur is not None or has_link:
-                            calls_count += 1
-                            try:
-                                talk_seconds += int(dur or 0)
-                            except:
-                                pass
+                    # Разбираем params (как в вашем JSON)
+                    # "params": { "duration": 55, ... }
+                    params = note_data.get("params", {})
+                    dur = params.get("duration")
+
+                    # Проверяем валидность (duration или наличие ссылки)
+                    has_link = bool(params.get("link") or params.get("record_link") or params.get("uniq"))
+
+                    if dur is not None or has_link:
+                        calls_count += 1
+                        try:
+                            talk_seconds += int(dur or 0)
+                        except:
+                            pass
+
+                        if i < 5:
+                            debug_log.append(f"MATCH: {n_type}, Dur: {dur}")
         else:
-            debug_log.append(f"Events API Error: {r_ev.status_code}")
+            debug_log.append(f"API Error: {r_ev.status_code}")
 
-        # --- 3. СДЕЛКИ ---
+        # --- 3. СДЕЛКИ (Leads) ---
         leads_created = 0
         leads_won = 0
         leads_lost = 0
 
-        # (Код сделок стандартный, работает)
+        # Created
         r_cr = _amo_get(conn.base_domain, conn.access_token, "/api/v4/leads", {
             "filter[created_at][from]": filter_timestamp, "filter[responsible_user_id]": my_amo_id
         })
         if r_cr.status_code == 200: leads_created = len(r_cr.json().get("_embedded", {}).get("leads", []))
 
+        # Closed
         r_cl = _amo_get(conn.base_domain, conn.access_token, "/api/v4/leads", {
             "filter[closed_at][from]": filter_timestamp, "filter[responsible_user_id]": my_amo_id
         })
