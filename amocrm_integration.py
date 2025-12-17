@@ -679,6 +679,7 @@ def sync_my_daily_stats():
 
     start_of_day_almaty = almaty_now.replace(hour=0, minute=0, second=0, microsecond=0)
     filter_timestamp = int(start_of_day_almaty.timestamp())
+    ts_now = int(time.time())  # <--- Добавлено текущее время для итераторов
     today_date = start_of_day_almaty.date()
 
     if not user.company_id:
@@ -782,28 +783,25 @@ def sync_my_daily_stats():
             if len(events) < 250: break
             page += 1
 
-        # --- 3. СБОР СДЕЛОК ---
-        leads_created = 0
-        leads_won = 0
-        leads_lost = 0
+            # --- 3. СБОР СДЕЛОК (Итераторы для точности) ---
+            leads_created = 0
+            leads_won = 0
+            leads_lost = 0
 
-        # Created
-        r_cr = _amo_get(conn.base_domain, conn.access_token, "/api/v4/leads", {
-            "filter[created_at][from]": filter_timestamp, "filter[responsible_user_id]": my_amo_id
-        })
-        if r_cr.status_code == 200: leads_created = len(r_cr.json().get("_embedded", {}).get("leads", []))
+            # Считаем созданные
+            for l in _iter_created_leads(conn.base_domain, conn.access_token, filter_timestamp, ts_now):
+                # Фильтр по ответственному
+                if int(l.get("responsible_user_id", 0)) == my_amo_id:
+                    leads_created += 1
 
-        # Closed
-        r_cl = _amo_get(conn.base_domain, conn.access_token, "/api/v4/leads", {
-            "filter[closed_at][from]": filter_timestamp, "filter[responsible_user_id]": my_amo_id
-        })
-        if r_cl.status_code == 200:
-            for l in r_cl.json().get("_embedded", {}).get("leads", []):
-                sid = int(l.get("status_id", 0))
-                if sid == WON_STATUS_ID:
-                    leads_won += 1
-                elif sid == LOST_STATUS_ID:
-                    leads_lost += 1
+            # Считаем закрытые (Выигранные и проигранные)
+            for l in _iter_closed_leads(conn.base_domain, conn.access_token, filter_timestamp, ts_now):
+                if int(l.get("responsible_user_id", 0)) == my_amo_id:
+                    sid = int(l.get("status_id", 0))
+                    if sid == WON_STATUS_ID:
+                        leads_won += 1
+                    elif sid == LOST_STATUS_ID:
+                        leads_lost += 1
 
         # --- 4. СОХРАНЕНИЕ ---
         stat_entry = db.session.execute(
