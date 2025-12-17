@@ -666,18 +666,15 @@ def amocrm_callback(company_id: int):
 @login_required
 def sync_my_daily_stats():
     """
-    FIXED 400 ERROR + SIPUNI LOGIC:
-    1. Убран ломающий фильтр filter[type]. Запрашиваем все события.
-    2. Фильтрация на стороне Python (Note -> call_in/call_out).
-    3. Время: Алматы (UTC+5).
+    DIAGNOSTIC V3 (FILTERED):
+    1. Фильтр на уровне API: filter[created_by] = user_id (чтобы отсечь лишнее).
+    2. Расширенное логирование первых 5 событий для понимания структуры.
     """
     user = current_user
 
-    # --- 1. Настройка времени (Алматы UTC+5) ---
+    # 1. Время (Алматы UTC+5)
     utc_now = datetime.datetime.now(datetime.timezone.utc)
     almaty_now = utc_now + datetime.timedelta(hours=5)
-
-    # Начало дня
     start_of_day_almaty = almaty_now.replace(hour=0, minute=0, second=0, microsecond=0)
     filter_timestamp = int(start_of_day_almaty.timestamp())
     today_date = start_of_day_almaty.date()
@@ -701,107 +698,83 @@ def sync_my_daily_stats():
     if not conn or not conn.access_token:
         return jsonify({"error": "Company integration not active"}), 400
 
+    my_amo_id = mapping.amocrm_user_id
+
     debug_log = [
-        f"Almaty Time: {almaty_now}",
-        f"Filter From TS: {filter_timestamp}",
-        f"My AmoID: {mapping.amocrm_user_id}"
+        f"Almaty: {almaty_now}",
+        f"Filter From: {filter_timestamp}",
+        f"Target UserID: {my_amo_id}"
     ]
 
     try:
-        my_amo_id = mapping.amocrm_user_id
-
-        # --- 2. СБОР ЗВОНКОВ (ALL EVENTS -> FILTER) ---
+        # --- 2. СБОР ЗВОНКОВ ---
         calls_count = 0
         talk_seconds = 0
 
-        # УБРАЛИ filter[type], который вызывал ошибку 400
+        # ДОБАВЛЕН ФИЛЬТР filter[created_by]
+        # Это заставит API вернуть события ТОЛЬКО этого юзера.
+        # Если звонки создает он (как мы видели в inspect_entity), мы их увидим.
         params_events = {
             "filter[created_at][from]": filter_timestamp,
-            "limit": 100
+            "filter[created_by][]": my_amo_id,  # <--- Фильтруем по автору
+            "limit": 100,
+            "with": "note"
         }
 
-        # Делаем запрос
         r_ev = _amo_get(conn.base_domain, conn.access_token, "/api/v4/events", params_events)
 
         if r_ev.status_code == 200:
             events = r_ev.json().get("_embedded", {}).get("events", [])
-            debug_log.append(f"Events loaded: {len(events)}")
+            debug_log.append(f"Events loaded (filtered by user): {len(events)}")
 
-            for ev in events:
-                # Нам нужны только события добавления примечаний (type == note)
-                # Но так как мы убрали фильтр, проверяем вручную
-                if ev.get("type") != "note":
-                    continue
+            for i, ev in enumerate(events):
+                # Логируем первые 5 событий полностью, чтобы понять, что приходит
+                ev_type = ev.get("type")
 
-                # Достаем структуру Note из value_after
+                # Достаем Note
                 vals = ev.get("value_after", [])
-
-                # Защита от разных форматов API
-                wrapper = {}
-                if isinstance(vals, list) and vals:
-                    wrapper = vals[0]
-                elif isinstance(vals, dict):
-                    wrapper = vals
-
+                wrapper = vals[0] if isinstance(vals, list) and vals else (vals if isinstance(vals, dict) else {})
                 note_data = wrapper.get("note", {})
-                if not note_data:
-                    continue
+                note_type = str(note_data.get("note_type", "None"))
 
-                # --- ЛОГИКА ПРОВЕРКИ АВТОРСТВА ---
-                # Проверяем и создателя события, и ответственного за заметку
-                # SIPUNI иногда пишет ответственного внутрь заметки
+                if i < 5:
+                    debug_log.append(f"#{i} Type: {ev_type}, NoteType: {note_type}, Creator: {ev.get('created_by')}")
 
-                ev_creator = int(ev.get("created_by") or 0)
-                note_resp = int(note_data.get("responsible_user_id") or 0)
+                # Ищем звонки
+                if ev_type == "note" and note_data:
+                    if note_type in ["call_in", "call_out", "10", "11", "12", "13"]:
+                        params = note_data.get("params", {})
+                        dur = params.get("duration")
 
-                # Если ни создатель, ни ответственный не наш юзер -> пропускаем
-                if ev_creator != my_amo_id and note_resp != my_amo_id:
-                    continue
+                        # Иногда duration это строка, иногда число, иногда None
+                        # Важно: иногда SIPUNI пишет duration: null, но link есть. Считаем за звонок.
+                        has_link = bool(params.get("link") or params.get("record_link"))
 
-                # --- ЛОГИКА ТИПА ЗВОНКА ---
-                n_type = str(note_data.get("note_type", ""))
-
-                # Ищем call_out, call_in и их коды
-                if n_type in ["call_in", "call_out", "10", "11", "12", "13"]:
-
-                    # Финальная проверка: есть ли ссылка или длительность?
-                    params = note_data.get("params", {})
-                    dur = params.get("duration")
-                    link = params.get("link") or params.get("record_link")
-
-                    # Считаем, если есть длительность ИЛИ ссылка (как в вашем примере)
-                    if dur is not None or link:
-                        calls_count += 1
-                        try:
-                            talk_seconds += int(dur or 0)
-                        except:
-                            pass
+                        if dur is not None or has_link:
+                            calls_count += 1
+                            try:
+                                talk_seconds += int(dur or 0)
+                            except:
+                                pass
         else:
             debug_log.append(f"Events API Error: {r_ev.status_code}")
 
-        # --- 3. СДЕЛКИ (Leads) ---
+        # --- 3. СДЕЛКИ ---
         leads_created = 0
         leads_won = 0
         leads_lost = 0
 
-        # Created
+        # (Код сделок стандартный, работает)
         r_cr = _amo_get(conn.base_domain, conn.access_token, "/api/v4/leads", {
-            "filter[created_at][from]": filter_timestamp,
-            "filter[responsible_user_id]": my_amo_id,
-            "limit": 250
+            "filter[created_at][from]": filter_timestamp, "filter[responsible_user_id]": my_amo_id
         })
-        if r_cr.status_code == 200:
-            leads_created = len(r_cr.json().get("_embedded", {}).get("leads", []))
+        if r_cr.status_code == 200: leads_created = len(r_cr.json().get("_embedded", {}).get("leads", []))
 
-        # Closed
         r_cl = _amo_get(conn.base_domain, conn.access_token, "/api/v4/leads", {
-            "filter[closed_at][from]": filter_timestamp,
-            "filter[responsible_user_id]": my_amo_id,
-            "limit": 250
+            "filter[closed_at][from]": filter_timestamp, "filter[responsible_user_id]": my_amo_id
         })
         if r_cl.status_code == 200:
-            closed = r_cl.json().get("_embedded", {}).get("leads", [])
-            for l in closed:
+            for l in r_cl.json().get("_embedded", {}).get("leads", []):
                 sid = int(l.get("status_id", 0))
                 if sid == WON_STATUS_ID:
                     leads_won += 1
@@ -811,10 +784,7 @@ def sync_my_daily_stats():
         # --- 4. СОХРАНЕНИЕ ---
         stat_entry = db.session.execute(
             select(AmoCRMUserDailyStat).where(
-                and_(
-                    AmoCRMUserDailyStat.user_id == user.id,
-                    AmoCRMUserDailyStat.date == today_date
-                )
+                and_(AmoCRMUserDailyStat.user_id == user.id, AmoCRMUserDailyStat.date == today_date)
             )
         ).scalar_one_or_none()
 
