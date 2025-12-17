@@ -666,15 +666,17 @@ def amocrm_callback(company_id: int):
 @login_required
 def sync_my_daily_stats():
     """
-    SIPUNI ULTIMATE FIX:
-    1. Запрашивает события БЕЗ фильтров по типу/автору (чтобы избежать 400 и роботов).
-    2. Ищет внутри note -> responsible_user_id (так как звонок создает робот, а ответственный - менеджер).
+    PAGINATION STRATEGY:
+    1. Перебираем все события за сегодня страницами (по 250 шт).
+    2. Внутри Python фильтруем: Note -> Responsible == Me -> Type == Call.
     """
     user = current_user
 
     # 1. Время (Алматы UTC+5)
     utc_now = datetime.datetime.now(datetime.timezone.utc)
     almaty_now = utc_now + datetime.timedelta(hours=5)
+
+    # Начало дня
     start_of_day_almaty = almaty_now.replace(hour=0, minute=0, second=0, microsecond=0)
     filter_timestamp = int(start_of_day_almaty.timestamp())
     today_date = start_of_day_almaty.date()
@@ -701,87 +703,132 @@ def sync_my_daily_stats():
     my_amo_id = mapping.amocrm_user_id
 
     debug_log = [
-        f"Almaty: {almaty_now}",
-        f"My AmoID: {my_amo_id}"
+        f"Almaty Today: {start_of_day_almaty}",
+        f"Searching for UserID: {my_amo_id}"
     ]
 
     try:
-        # --- 2. СБОР ЗВОНКОВ ---
+        # --- 2. СБОР ЗВОНКОВ (PAGINATION LOOP) ---
         calls_count = 0
         talk_seconds = 0
 
-        # МИНИМАЛЬНЫЕ ПАРАМЕТРЫ ЗАПРОСА
-        # Убрали filter[type] и filter[created_by], чтобы получить всё и не получить 400
-        params_events = {
-            "filter[created_at][from]": filter_timestamp,
-            "limit": 100,
-            "with": "note"
-        }
+        page = 1
+        max_pages = 50  # Защита от бесконечного цикла (50 * 250 = 12500 событий максимум)
+        total_events_scanned = 0
 
-        r_ev = _amo_get(conn.base_domain, conn.access_token, "/api/v4/events", params_events)
+        while page <= max_pages:
+            # Запрашиваем страницу событий
+            # Без фильтров по типу/автору, только дата
+            params_events = {
+                "filter[created_at][from]": filter_timestamp,
+                "limit": 250,
+                "page": page,
+                "with": "note"
+            }
 
-        if r_ev.status_code == 200:
+            r_ev = _amo_get(conn.base_domain, conn.access_token, "/api/v4/events", params_events)
+
+            if r_ev.status_code == 204:
+                # 204 No Content = данные закончились
+                break
+
+            if r_ev.status_code != 200:
+                debug_log.append(f"Page {page} Error: {r_ev.status_code}")
+                break
+
             events = r_ev.json().get("_embedded", {}).get("events", [])
-            debug_log.append(f"Raw events fetched: {len(events)}")
+            if not events:
+                break
 
+            total_events_scanned += len(events)
+
+            # --- ОБРАБОТКА СТРАНИЦЫ ---
             for ev in events:
-                # Нас интересуют только события добавления примечаний
-                if ev.get("type") != "note":
-                    continue
+                # Нам нужны только заметки (note) или события звонков
+                ev_type = ev.get("type")
 
-                # Достаем структуру Note
+                # Достаем структуру данных
                 vals = ev.get("value_after", [])
                 wrapper = vals[0] if isinstance(vals, list) and vals else (vals if isinstance(vals, dict) else {})
+
+                # Данные заметки
                 note_data = wrapper.get("note", {})
 
-                if not note_data:
+                # Если это не заметка, проверяем, может это прямой звонок (outgoing_call)
+                # (на всякий случай, если SIPUNI сменит формат)
+                if not note_data and ev_type not in ["note", "outgoing_call", "incoming_call"]:
                     continue
 
-                # --- ГЛАВНАЯ ПРОВЕРКА ---
-                # Проверяем ответственного ЗА ЗАМЕТКУ.
-                # SIPUNI ставит менеджера ответственным за note, даже если note создал робот.
-                note_resp = int(note_data.get("responsible_user_id") or 0)
+                # --- 1. ПРОВЕРКА ОТВЕТСТВЕННОГО ---
+                # Самое важное: кто указан ответственным ВНУТРИ данных
+                # (Если робот создал заметку, он ставит менеджера ответственным)
 
-                if note_resp != my_amo_id:
-                    continue  # Заметка не наша
+                # Пытаемся найти responsible_user_id в note
+                target_resp_id = int(note_data.get("responsible_user_id") or 0)
 
-                # --- ПРОВЕРКА НА ЗВОНОК ---
-                # Ищем типы звонков
+                # Если в note пусто, проверяем корневое событие (для outgoing_call)
+                if target_resp_id == 0:
+                    # Некоторые события имеют created_by, который нам нужен
+                    if int(ev.get("created_by") or 0) == my_amo_id:
+                        target_resp_id = my_amo_id
+
+                # Если звонок не относится к нашему юзеру - пропускаем
+                if target_resp_id != my_amo_id:
+                    continue
+
+                # --- 2. ПРОВЕРКА ТИПА (ЗВОНОК ЛИ ЭТО?) ---
+                is_call = False
+                duration = 0
+
+                # Вариант А: Это Note
                 n_type = str(note_data.get("note_type", ""))
-
                 if n_type in ["call_in", "call_out", "10", "11", "12", "13"]:
-
+                    is_call = True
                     params = note_data.get("params", {})
-                    dur = params.get("duration")
-                    # Проверка на наличие ссылки (иногда duration=0, но ссылка есть)
-                    has_link = bool(params.get("link") or params.get("record_link") or params.get("uniq"))
+                    # Проверяем duration или наличие ссылки
+                    try:
+                        duration = int(params.get("duration") or 0)
+                    except:
+                        pass
 
-                    if dur is not None or has_link:
-                        calls_count += 1
-                        try:
-                            talk_seconds += int(dur or 0)
-                        except:
-                            pass
+                    # Если длительность 0, но есть ссылка - считаем звонком
+                    if duration == 0 and (params.get("link") or params.get("record_link") or params.get("uniq")):
+                        pass  # is_call уже True
 
-                        # Логируем первый найденный звонок для проверки
-                        if calls_count == 1:
-                            debug_log.append(f"FOUND CALL! Type: {n_type}, Dur: {dur}")
+                # Вариант Б: Это событие outgoing_call/incoming_call
+                elif ev_type in ["outgoing_call", "incoming_call", "phone_call"]:
+                    is_call = True
+                    # Ищем длительность в корне wrapper
+                    try:
+                        duration = int(wrapper.get("duration") or 0)
+                    except:
+                        pass
 
-        else:
-            debug_log.append(f"Events API Error: {r_ev.status_code}")
+                if is_call:
+                    calls_count += 1
+                    talk_seconds += duration
+
+            # Переход к следующей странице
+            # Проверяем, есть ли следующая страница в _links (стандарт HAL)
+            # или просто идем дальше, если вернулось 250 элементов
+            if len(events) < 250:
+                break
+            page += 1
+
+        debug_log.append(f"Scanned {total_events_scanned} events across {page} pages")
+        debug_log.append(f"Found {calls_count} calls")
 
         # --- 3. СДЕЛКИ (Leads) ---
+        # (Стандартный код, он работает)
         leads_created = 0
         leads_won = 0
         leads_lost = 0
 
-        # Created
         r_cr = _amo_get(conn.base_domain, conn.access_token, "/api/v4/leads", {
             "filter[created_at][from]": filter_timestamp, "filter[responsible_user_id]": my_amo_id
         })
         if r_cr.status_code == 200: leads_created = len(r_cr.json().get("_embedded", {}).get("leads", []))
 
-        # Closed
         r_cl = _amo_get(conn.base_domain, conn.access_token, "/api/v4/leads", {
             "filter[closed_at][from]": filter_timestamp, "filter[responsible_user_id]": my_amo_id
         })
