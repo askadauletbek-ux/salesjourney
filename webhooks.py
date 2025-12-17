@@ -228,6 +228,10 @@ def _process_call_reward(user: User, duration: int, source_link: str):
     elif buff_type == BuffType.SHARK:
         multiplier = 0.5  # Акула не любит мелкую работу
 
+        # Бонус за стрик (CD8)
+    if profile.current_streak > 3:
+        multiplier *= 1.05  # +5% пассивный бонус
+
     final_amount = int(base_points * multiplier)
 
     # 4. Сохранение

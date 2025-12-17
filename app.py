@@ -301,12 +301,21 @@ def create_app():
                 # Стандарт (Не выбрано)
                 score = (calls * 10) + (sales * 500)
 
+            # Бонус за стрик > 3 дней (+5%)
+            streak = emp.gamification_profile.current_streak if emp.gamification_profile else 0
+            has_streak_bonus = False
+            if streak > 3:
+                score *= 1.05
+                has_streak_bonus = True
+
             employees_data.append({
                 'user': emp,
                 'buff': current_buff,
                 'calls': calls,
                 'sales': sales,
-                'score': int(score)
+                'score': int(score),
+                'streak': streak,
+                'has_bonus': has_streak_bonus
             })
 
         # Сортировка: Лидеры по очкам вверху
