@@ -16,8 +16,11 @@
         ← Компании
       </a>
       <a href="/partner/company/{{ company.id }}/crm"
-         class="px-3 py-2 rounded-2xl bg-white/5 border border-[color:var(--sj-border)] hover:bg-white/10">
+         class="px-3 py-2 rounded-2xl bg-white/5 border border-[color:var(--sj-border)] hover:bg-white/10 relative group">
         <i class="fa-solid fa-plug mr-2 text-white/60"></i>CRM
+        <div class="absolute bottom-full right-0 mb-2 w-48 p-2 bg-black border border-white/20 rounded-lg text-xs font-normal text-white hidden group-hover:block z-50 shadow-xl">
+             Настройка интеграции с AmoCRM
+        </div>
       </a>
       <a href="/partner/company/{{ company.id }}/crm/dashboard"
          class="px-3 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-2xl">
@@ -26,13 +29,17 @@
     </div>
   </div>
 
-  <!-- “Control strip” -->
   <div class="grid lg:grid-cols-12 gap-4">
-    <!-- Invite code -->
-    <div class="lg:col-span-5 rounded-2xl border border-[color:var(--sj-border)] bg-white/5 p-5">
+    <div class="lg:col-span-5 rounded-2xl border border-[color:var(--sj-border)] bg-white/5 p-5 relative group">
       <div class="flex items-start justify-between gap-3">
         <div>
-          <div class="font-bold text-lg">Код вступления</div>
+          <div class="font-bold text-lg flex items-center gap-2">
+              Код вступления
+              <i class="fa-solid fa-circle-question text-white/20 hover:text-white/60 cursor-help text-sm"></i>
+          </div>
+          <div class="absolute top-12 left-5 right-5 p-3 bg-[#0f121d] border border-white/10 rounded-xl text-xs text-white shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
+              Отправьте этот код сотрудникам. Они вводят его при регистрации, чтобы автоматически попасть в вашу компанию.
+          </div>
           <div class="text-sm text-[color:var(--sj-muted)] mt-1">Сотрудники вводят его на главной.</div>
         </div>
         <div class="w-12 h-12 rounded-2xl bg-white/5 border border-[color:var(--sj-border)] grid place-items-center">
@@ -55,7 +62,6 @@
       </div>
     </div>
 
-    <!-- Company stats -->
     <div class="lg:col-span-7 rounded-2xl border border-[color:var(--sj-border)] bg-white/5 p-5">
       <div class="flex items-start justify-between gap-3">
         <div>
@@ -72,13 +78,20 @@
           <div class="text-xs text-[color:var(--sj-muted)]">Сотрудников</div>
           <div class="text-2xl font-extrabold mt-1">{{ company.employees|length }}</div>
         </div>
-        <div class="rounded-2xl border border-[color:var(--sj-border)] bg-black/20 p-4">
-          <div class="text-xs text-[color:var(--sj-muted)]">Статус CRM</div>
+        <div class="rounded-2xl border border-[color:var(--sj-border)] bg-black/20 p-4 relative group">
+          <div class="text-xs text-[color:var(--sj-muted)] flex items-center gap-1">
+              Статус CRM
+              <i class="fa-solid fa-circle-info text-white/20 hover:text-white cursor-help"></i>
+          </div>
+          <div class="absolute bottom-full left-0 mb-2 w-48 p-2 bg-black border border-white/20 rounded-lg text-xs font-normal text-white hidden group-hover:block z-50 shadow-xl">
+             Зеленый статус означает, что токены доступа активны и синхронизация работает.
+          </div>
+
           <div class="text-sm font-semibold mt-2">
             {% if crm_connected %}
-              <span class="text-[color:var(--sj-emerald)]">Подключено</span>
+              <span class="text-[color:var(--sj-emerald)] flex items-center gap-1"><i class="fa-solid fa-check"></i> Подключено</span>
             {% else %}
-              <span class="text-[color:var(--sj-rose)]">Не подключено</span>
+              <span class="text-[color:var(--sj-rose)] flex items-center gap-1"><i class="fa-solid fa-xmark"></i> Не подключено</span>
             {% endif %}
           </div>
         </div>
@@ -91,7 +104,6 @@
   </div>
 </div>
 
-<!-- Tabs -->
 <div x-data="{tab:'employees'}" class="rounded-2xl border border-[color:var(--sj-border)] bg-white/5 p-5">
   <div class="flex flex-wrap items-center justify-between gap-3">
     <div class="flex gap-2">
@@ -114,9 +126,8 @@
     </div>
   </div>
 
-  <!-- Employees -->
   <div class="mt-4" x-show="tab==='employees'">
-    <div class="overflow-x-auto rounded-2xl border border-[color:var(--sj-border)]">
+    <div class="overflow-x-auto rounded-2xl border border-[color:var(--sj-border)] min-h-[300px]">
       <table class="min-w-full text-sm">
         <thead class="bg-black/25">
           <tr>
@@ -124,8 +135,8 @@
 
             <th class="px-4 py-3 text-center font-semibold text-white/80 group relative cursor-help">
                 Стратегия
-                <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-black border border-white/20 rounded-lg text-xs font-normal text-white/80 hidden group-hover:block z-10 shadow-xl">
-                    Влияет на множители очков за звонки и продажи.
+                <div class="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-48 p-2 bg-[#0f121d] border border-white/20 rounded-lg text-xs font-normal text-white hidden group-hover:block z-[100] shadow-xl">
+                    Выбранный бафф влияет на расчет очков.
                 </div>
             </th>
 
@@ -135,10 +146,10 @@
             <th class="px-4 py-3 text-center font-semibold text-white/80 group relative cursor-help">
                 XP (Сегодня)
                 <i class="fa-solid fa-circle-info text-white/30 text-xs ml-1"></i>
-                <div class="absolute bottom-full right-0 mb-2 w-64 p-3 bg-[#101524] border border-[color:var(--sj-amber)]/30 rounded-xl text-xs font-normal text-left text-white/80 hidden group-hover:block z-10 shadow-2xl">
+                <div class="absolute top-full right-0 mt-2 w-64 p-3 bg-[#0f121d] border border-[color:var(--sj-amber)]/30 rounded-xl text-xs font-normal text-left text-white hidden group-hover:block z-[100] shadow-2xl">
                     <div class="font-bold text-[color:var(--sj-amber)] mb-1">Формула расчета:</div>
-                    Сумма очков за действия × Множитель стратегии.<br>
-                    <span class="text-emerald-400 mt-1 block">+5% бонус, если стрик > 3 дней.</span>
+                    (Действия × Множитель стратегии) + Бонусы.<br>
+                    <span class="text-emerald-400 mt-1 block">+5% если стрик > 3 дней.</span>
                 </div>
             </th>
 
@@ -148,7 +159,7 @@
        <tbody id="empBody">
           {% for item in employees_data %}
           {% set e = item.user %}
-          <tr class="border-t border-[color:var(--sj-border)] hover:bg-white/5" data-row="{{ (e.username ~ ' ' ~ e.email)|lower }}">
+          <tr class="border-t border-[color:var(--sj-border)] hover:bg-white/5 relative" data-row="{{ (e.username ~ ' ' ~ e.email)|lower }}">
             <td class="px-4 py-3">
               <div class="flex items-center gap-3">
                 <div class="w-10 h-10 rounded-2xl bg-white/5 border border-[color:var(--sj-border)] grid place-items-center font-bold">
@@ -223,32 +234,46 @@
     </div>
   </div>
 
-  <!-- Settings -->
   <div class="mt-4" x-show="tab==='settings'">
     <div class="grid md:grid-cols-2 gap-4">
       <div class="rounded-2xl border border-[color:var(--sj-border)] bg-black/20 p-5">
-        <div class="font-bold">Ротация кода</div>
-        <div class="text-sm text-[color:var(--sj-muted)] mt-1">Если код утек — обнови и раздай новый.</div>
+        <div class="font-bold flex items-center gap-2">
+            Ротация кода
+            <i class="fa-solid fa-circle-question text-white/20 text-sm" title="Для безопасности"></i>
+        </div>
+        <div class="text-sm text-[color:var(--sj-muted)] mt-1 mb-4">
+            Если старый код попал к посторонним, создайте новый. Старый код перестанет действовать.
+        </div>
 
-        <form action="/partner/company/{{ company.id }}/invite/rotate" method="POST" class="mt-4">
-          <button class="px-4 py-2 rounded-2xl bg-white/5 border border-[color:var(--sj-border)] hover:bg-white/10 font-semibold">
+        <form action="/partner/company/{{ company.id }}/invite/rotate" method="POST" class="mt-auto">
+          <button class="px-4 py-2 rounded-2xl bg-white/5 border border-[color:var(--sj-border)] hover:bg-white/10 font-semibold w-full">
             Сгенерировать новый код
           </button>
         </form>
       </div>
 
       <div class="rounded-2xl border border-[color:var(--sj-border)] bg-black/20 p-5">
-        <div class="font-bold">CRM</div>
-        <div class="text-sm text-[color:var(--sj-muted)] mt-1">Подключение amo/Kommo и сопоставление пользователей.</div>
+        <div class="font-bold flex items-center gap-2">
+            CRM Интеграция
+            <span class="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 text-[10px] border border-blue-500/30">Важно</span>
+        </div>
+        <div class="text-sm text-[color:var(--sj-muted)] mt-1 mb-4">
+            Здесь вы подключаете AmoCRM. Необходимо войти под администратором AmoCRM и разрешить доступ.
+            <ul class="list-disc list-inside mt-2 text-white/50 text-xs space-y-1">
+                <li>Синхронизация пользователей (по Email)</li>
+                <li>Загрузка статистики звонков</li>
+                <li>Обновление статусов сделок</li>
+            </ul>
+        </div>
 
         <div class="mt-4 flex gap-2">
           <a href="/partner/company/{{ company.id }}/crm"
-             class="px-4 py-2 rounded-2xl bg-white/5 border border-[color:var(--sj-border)] hover:bg-white/10 font-semibold">
-            Открыть настройки CRM
+             class="flex-1 text-center px-4 py-2 rounded-2xl bg-white/5 border border-[color:var(--sj-border)] hover:bg-white/10 font-semibold">
+            Настроить
           </a>
           <a href="/partner/company/{{ company.id }}/crm/dashboard"
-             class="px-4 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-2xl">
-            Дэшборд
+             class="flex-1 text-center px-4 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-2xl">
+            Дэшборд CRM
           </a>
         </div>
       </div>

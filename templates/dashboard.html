@@ -5,7 +5,17 @@
 
 <div x-data="gameDashboard()" x-init="initDashboard()" class="relative min-h-[80vh]">
 
-  <div x-show="stats.squad" x-transition class="mb-8 p-1 rounded-2xl bg-gradient-to-r from-violet-600/20 to-fuchsia-600/20 border border-violet-500/20">
+  <div x-show="stats.squad" x-transition class="mb-8 p-1 rounded-2xl bg-gradient-to-r from-violet-600/20 to-fuchsia-600/20 border border-violet-500/20 relative group">
+    <div class="absolute -top-3 -right-3 z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+         <div class="relative group/tooltip">
+             <i class="fa-solid fa-circle-info text-violet-300 bg-[#0f121d] rounded-full p-1 border border-violet-500/50 cursor-help shadow-lg"></i>
+             <div class="absolute top-full right-0 mt-2 w-64 p-3 bg-[#0f121d] border border-violet-500/30 rounded-xl text-xs text-white shadow-2xl pointer-events-none opacity-0 group-hover/tooltip:opacity-100 transition-opacity">
+                 <div class="font-bold text-violet-300 mb-1">Общая цель отдела</div>
+                 Это сумма усилий всех сотрудников. Когда шкала заполнится, вся команда получит бонус от руководителя!
+             </div>
+         </div>
+    </div>
+
     <div class="bg-[#0f121d] rounded-xl p-4 sm:p-6 relative overflow-hidden">
         <div class="relative z-10">
             <div class="flex justify-between items-end mb-2">
@@ -31,10 +41,15 @@
   </div>
 
   <div class="mb-8 flex flex-col sm:flex-row sm:items-end justify-between gap-4 animate-fade-in-down">
-    <div>
-      <h1 class="text-3xl sm:text-4xl font-black tracking-tight text-white mb-2">
+    <div class="relative group cursor-help">
+      <h1 class="text-3xl sm:text-4xl font-black tracking-tight text-white mb-2 flex items-center gap-2">
         Центр управления
+        <i class="fa-regular fa-circle-question text-lg text-white/20 hover:text-white/60 transition-colors"></i>
       </h1>
+      <div class="absolute top-full left-0 mt-2 w-72 p-4 bg-[#101524] border border-white/10 rounded-2xl text-sm text-[color:var(--sj-muted)] shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
+          Здесь твой пульт управления. Выбирай стратегию утром, следи за статистикой из CRM и контролируй свой прогресс в игре.
+      </div>
+
       <p class="text-base text-[color:var(--sj-muted)]">
         Твой прогресс и ежедневные решения.
       </p>
@@ -47,10 +62,16 @@
     </button>
   </div>
 
-  <div class="mb-10">
+  <div class="mb-10 group relative">
       <div class="flex items-center justify-between mb-4">
           <h2 class="text-xl font-bold text-white flex items-center gap-2">
              <i class="fa-solid fa-chart-line text-blue-400"></i> Моя эффективность
+             <div class="relative group/info ml-2">
+                 <i class="fa-solid fa-info-circle text-xs text-blue-500/50 hover:text-blue-400 cursor-help"></i>
+                 <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-[#101524] border border-blue-500/30 rounded-xl text-xs text-white shadow-xl opacity-0 group-hover/info:opacity-100 pointer-events-none transition-opacity z-50">
+                     Данные синхронизируются с AmoCRM. Учитываются только успешные сделки и звонки длительностью более 10 секунд.
+                 </div>
+             </div>
           </h2>
           <small class="text-xs font-medium text-[color:var(--sj-muted)] transition-colors"
                  :class="{'text-blue-400': amoLoading, 'text-emerald-400': !amoLoading && amoLinked}">
@@ -60,8 +81,8 @@
 
       <template x-if="amoLinked">
           <div class="grid md:grid-cols-3 gap-6">
-              <div class="relative overflow-hidden rounded-3xl border border-[color:var(--sj-border)] bg-[#101524] p-6 shadow-lg group hover:border-blue-500/30 transition-colors">
-                  <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+              <div class="relative overflow-hidden rounded-3xl border border-[color:var(--sj-border)] bg-[#101524] p-6 shadow-lg hover:border-blue-500/30 transition-colors">
+                  <div class="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
                       <i class="fa-solid fa-phone text-6xl text-blue-400 transform -rotate-12"></i>
                   </div>
                   <div class="relative z-10">
@@ -75,8 +96,8 @@
                   </div>
               </div>
 
-              <div class="relative overflow-hidden rounded-3xl border border-[color:var(--sj-border)] bg-[#101524] p-6 shadow-lg group hover:border-indigo-500/30 transition-colors">
-                  <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+              <div class="relative overflow-hidden rounded-3xl border border-[color:var(--sj-border)] bg-[#101524] p-6 shadow-lg hover:border-indigo-500/30 transition-colors">
+                  <div class="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
                       <i class="fa-solid fa-stopwatch text-6xl text-indigo-400 transform rotate-12"></i>
                   </div>
                   <div class="relative z-10">
@@ -92,8 +113,8 @@
                   </div>
               </div>
 
-              <div class="relative overflow-hidden rounded-3xl border border-[color:var(--sj-border)] bg-[#101524] p-6 shadow-lg group hover:border-emerald-500/30 transition-colors">
-                  <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+              <div class="relative overflow-hidden rounded-3xl border border-[color:var(--sj-border)] bg-[#101524] p-6 shadow-lg hover:border-emerald-500/30 transition-colors">
+                  <div class="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
                       <i class="fa-solid fa-percent text-6xl text-emerald-400"></i>
                   </div>
                   <div class="relative z-10">
@@ -126,94 +147,124 @@
 
   <div class="grid md:grid-cols-3 gap-6 mb-10">
 
-    <div class="relative group overflow-hidden rounded-3xl border border-[color:var(--sj-border)] bg-[#101524] p-6 shadow-lg hover:shadow-[0_0_30px_rgba(124,58,237,0.15)] transition-all duration-300">
-      <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-        <i class="fa-solid fa-crown text-8xl text-white transform rotate-12 group-hover:scale-110 transition-transform"></i>
-      </div>
-
-      <div class="relative z-10 flex flex-col h-full justify-between">
-        <div>
-          <div class="flex items-center gap-3 mb-2">
-             <div class="w-8 h-8 rounded-lg bg-violet-500/20 flex items-center justify-center text-violet-400">
-               <i class="fa-solid fa-star text-sm"></i>
-             </div>
-             <span class="text-sm font-bold uppercase tracking-wider text-[color:var(--sj-muted)]">Уровень</span>
+    <div class="relative group rounded-3xl border border-[color:var(--sj-border)] bg-[#101524] shadow-lg hover:shadow-[0_0_30px_rgba(124,58,237,0.15)] transition-all duration-300">
+       <div class="absolute inset-0 overflow-hidden rounded-3xl z-0">
+          <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+            <i class="fa-solid fa-crown text-8xl text-white transform rotate-12 group-hover:scale-110 transition-transform"></i>
           </div>
-          <div class="text-5xl font-black text-white tracking-tighter">
-            <span x-text="stats.level">1</span>
-          </div>
-        </div>
+       </div>
 
-        <div class="mt-6">
-          <div class="flex justify-between text-xs font-semibold text-[color:var(--sj-muted)] mb-2">
-            <span>XP Прогресс</span>
-            <span x-text="`${stats.xp % 1000} / 1000`">0 / 1000</span>
-          </div>
-          <div class="h-2.5 rounded-full bg-white/5 border border-white/5 overflow-hidden">
-            <div class="h-full bg-gradient-to-r from-violet-600 to-fuchsia-500 shadow-[0_0_10px_rgba(124,58,237,0.5)] transition-all duration-1000"
-                 :style="`width: ${(stats.xp % 1000) / 10}%`"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="relative group overflow-hidden rounded-3xl border border-[color:var(--sj-border)] bg-[#101524] p-6 shadow-lg hover:shadow-[0_0_30px_rgba(251,191,36,0.15)] transition-all duration-300">
-      <div class="absolute -bottom-4 -right-4 opacity-10 group-hover:opacity-20 transition-opacity">
-        <i class="fa-solid fa-coins text-9xl text-[color:var(--sj-amber)] transform -rotate-12"></i>
-      </div>
-
-      <div class="relative z-10 flex flex-col h-full justify-between">
-        <div>
-          <div class="flex items-center gap-3 mb-2">
-             <div class="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center text-[color:var(--sj-amber)]">
-               <i class="fa-solid fa-wallet text-sm"></i>
-             </div>
-             <span class="text-sm font-bold uppercase tracking-wider text-[color:var(--sj-muted)]">Баланс</span>
-          </div>
-          <div class="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-200 to-amber-500 tracking-tighter"
-               x-text="stats.coins">
-            0
-          </div>
-        </div>
-
-        <a href="/shop" class="mt-6 inline-flex items-center justify-center w-full py-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-[color:var(--sj-amber)] font-bold transition-all group-hover:translate-x-1">
-          В магазин <i class="fa-solid fa-arrow-right ml-2"></i>
-        </a>
-      </div>
-    </div>
-
-    <div class="relative group overflow-hidden rounded-3xl border border-[color:var(--sj-border)] bg-[#101524] p-6 shadow-lg hover:shadow-[0_0_30px_rgba(251,113,133,0.15)] transition-all duration-300">
-      <div class="absolute top-4 right-4 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
+       <div class="absolute top-4 right-4 z-50 opacity-0 group-hover:opacity-100 transition-opacity">
           <div class="relative group/tooltip">
               <i class="fa-regular fa-circle-question text-[color:var(--sj-muted)] hover:text-white cursor-help text-lg"></i>
-              <div class="absolute bottom-full right-0 mb-2 w-48 p-3 bg-black/90 border border-white/10 rounded-xl text-xs text-white shadow-xl pointer-events-none opacity-0 group-hover/tooltip:opacity-100 transition-opacity">
+              <div class="absolute bottom-full right-0 mb-2 w-56 p-3 bg-[#0f121d] border border-white/10 rounded-xl text-xs text-white shadow-2xl pointer-events-none opacity-0 group-hover/tooltip:opacity-100 transition-opacity">
+                  <div class="font-bold text-violet-400 mb-1">Опыт (XP)</div>
+                  Начисляется автоматически: 10% от заработанных коинов. Показывает твой статус и активность в компании.
+              </div>
+          </div>
+       </div>
+
+       <div class="relative z-10 p-6 flex flex-col h-full justify-between">
+         <div>
+           <div class="flex items-center gap-3 mb-2">
+              <div class="w-8 h-8 rounded-lg bg-violet-500/20 flex items-center justify-center text-violet-400">
+                <i class="fa-solid fa-star text-sm"></i>
+              </div>
+              <span class="text-sm font-bold uppercase tracking-wider text-[color:var(--sj-muted)]">Уровень</span>
+           </div>
+           <div class="text-5xl font-black text-white tracking-tighter">
+             <span x-text="stats.level">1</span>
+           </div>
+         </div>
+         <div class="mt-6">
+           <div class="flex justify-between text-xs font-semibold text-[color:var(--sj-muted)] mb-2">
+             <span>XP Прогресс</span>
+             <span x-text="`${stats.xp % 1000} / 1000`">0 / 1000</span>
+           </div>
+           <div class="h-2.5 rounded-full bg-white/5 border border-white/5 overflow-hidden">
+             <div class="h-full bg-gradient-to-r from-violet-600 to-fuchsia-500 shadow-[0_0_10px_rgba(124,58,237,0.5)] transition-all duration-1000"
+                  :style="`width: ${(stats.xp % 1000) / 10}%`"></div>
+           </div>
+         </div>
+       </div>
+    </div>
+
+    <div class="relative group rounded-3xl border border-[color:var(--sj-border)] bg-[#101524] shadow-lg hover:shadow-[0_0_30px_rgba(251,191,36,0.15)] transition-all duration-300">
+       <div class="absolute inset-0 overflow-hidden rounded-3xl z-0">
+          <div class="absolute -bottom-4 -right-4 opacity-10 group-hover:opacity-20 transition-opacity">
+            <i class="fa-solid fa-coins text-9xl text-[color:var(--sj-amber)] transform -rotate-12"></i>
+          </div>
+       </div>
+
+       <div class="absolute top-4 right-4 z-50 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div class="relative group/tooltip">
+              <i class="fa-regular fa-circle-question text-[color:var(--sj-muted)] hover:text-white cursor-help text-lg"></i>
+              <div class="absolute bottom-full right-0 mb-2 w-56 p-3 bg-[#0f121d] border border-white/10 rounded-xl text-xs text-white shadow-2xl pointer-events-none opacity-0 group-hover/tooltip:opacity-100 transition-opacity">
+                  <div class="font-bold text-[color:var(--sj-amber)] mb-1">Коины (Coins)</div>
+                  Твоя валюта. Начисляется за звонки и закрытые сделки. Трать их в Магазине на призы и боксы.
+              </div>
+          </div>
+       </div>
+
+       <div class="relative z-10 p-6 flex flex-col h-full justify-between">
+         <div>
+           <div class="flex items-center gap-3 mb-2">
+              <div class="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center text-[color:var(--sj-amber)]">
+                <i class="fa-solid fa-wallet text-sm"></i>
+              </div>
+              <span class="text-sm font-bold uppercase tracking-wider text-[color:var(--sj-muted)]">Баланс</span>
+           </div>
+           <div class="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-200 to-amber-500 tracking-tighter"
+                x-text="stats.coins">
+             0
+           </div>
+         </div>
+         <a href="/shop" class="mt-6 inline-flex items-center justify-center w-full py-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-[color:var(--sj-amber)] font-bold transition-all group-hover:translate-x-1">
+           В магазин <i class="fa-solid fa-arrow-right ml-2"></i>
+         </a>
+       </div>
+    </div>
+
+    <div class="relative group rounded-3xl border border-[color:var(--sj-border)] bg-[#101524] shadow-lg hover:shadow-[0_0_30px_rgba(251,113,133,0.15)] transition-all duration-300">
+       <div class="absolute inset-0 overflow-hidden rounded-3xl z-0">
+          <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-rose-500/20 blur-[60px] rounded-full"></div>
+       </div>
+
+       <div class="absolute top-4 right-4 z-50 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div class="relative group/tooltip">
+              <i class="fa-regular fa-circle-question text-[color:var(--sj-muted)] hover:text-white cursor-help text-lg"></i>
+              <div class="absolute bottom-full right-0 mb-2 w-56 p-3 bg-black/90 border border-white/10 rounded-xl text-xs text-white shadow-2xl pointer-events-none opacity-0 group-hover/tooltip:opacity-100 transition-opacity">
                   <div class="font-bold text-[color:var(--sj-rose)] mb-1">Как это работает?</div>
                   Не пропускай ни дня активности! Если серия больше 3 дней, ты получаешь <span class="text-emerald-400 font-bold">+5% коинов</span> за все действия.
               </div>
           </div>
-      </div>
+       </div>
 
-      <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-rose-500/20 blur-[60px] rounded-full"></div>
+       <div class="relative z-10 p-6 text-center flex flex-col items-center justify-center h-full">
+         <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-rose-500/20 to-orange-500/20 border border-rose-500/30 flex items-center justify-center mb-3 shadow-[0_0_20px_rgba(244,63,94,0.2)] group-hover:scale-110 transition-transform duration-500">
+           <i class="fa-solid fa-fire text-3xl text-[color:var(--sj-rose)] animate-pulse"></i>
+         </div>
+         <div class="text-4xl font-black text-white mb-1">
+           <span x-text="stats.streak">0</span> дней
+         </div>
+         <div class="text-xs font-bold uppercase tracking-widest text-[color:var(--sj-muted)]">Серия побед</div>
 
-      <div class="relative z-10 text-center flex flex-col items-center justify-center h-full">
-        <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-rose-500/20 to-orange-500/20 border border-rose-500/30 flex items-center justify-center mb-3 shadow-[0_0_20px_rgba(244,63,94,0.2)] group-hover:scale-110 transition-transform duration-500">
-          <i class="fa-solid fa-fire text-3xl text-[color:var(--sj-rose)] animate-pulse"></i>
-        </div>
-        <div class="text-4xl font-black text-white mb-1">
-          <span x-text="stats.streak">0</span> дней
-        </div>
-        <div class="text-xs font-bold uppercase tracking-widest text-[color:var(--sj-muted)]">Серия побед</div>
-
-        <div x-show="stats.streak > 3" class="mt-2 px-2 py-0.5 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-[10px] text-emerald-400 font-bold">
-            +5% БОНУС АКТИВЕН
-        </div>
-      </div>
+         <div x-show="stats.streak > 3" class="mt-2 px-2 py-0.5 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-[10px] text-emerald-400 font-bold">
+             +5% БОНУС АКТИВЕН
+         </div>
+       </div>
     </div>
   </div>
 
   <div x-show="currentBuff" x-transition class="mb-10">
       <h2 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
          <i class="fa-solid fa-chess-knight text-violet-400"></i> Активная стратегия
+         <div class="relative group/info ml-2">
+             <i class="fa-solid fa-info-circle text-xs text-white/30 hover:text-white cursor-help"></i>
+             <div class="absolute bottom-full left-0 mb-2 w-64 p-3 bg-[#101524] border border-white/20 rounded-xl text-xs text-white shadow-xl opacity-0 group-hover/info:opacity-100 pointer-events-none transition-opacity z-50">
+                 Действует до полуночи. Множители (x1.5, x0.5) применяются автоматически при получении данных из AmoCRM.
+             </div>
+         </div>
       </h2>
       <div class="p-6 rounded-3xl border border-yellow-500/30 bg-yellow-500/5 relative overflow-hidden flex items-center gap-6">
           <div class="w-16 h-16 rounded-2xl bg-yellow-500/20 flex items-center justify-center text-3xl">
@@ -239,7 +290,7 @@
                    Как вы планируете побеждать сегодня?
                    <span class="group relative cursor-help">
                        <i class="fa-regular fa-circle-question text-white/40 hover:text-white/80 text-sm"></i>
-                       <span class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-[#101524] border border-white/10 rounded-xl text-xs text-left text-[color:var(--sj-muted)] shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
+                       <span class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-[#101524] border border-white/10 rounded-xl text-xs text-left text-[color:var(--sj-muted)] shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-[110]">
                            <strong class="text-white block mb-1">Ежедневный ритуал</strong>
                            Стратегия действует до 00:00. Она умножает баллы за одни действия и уменьшает за другие. Выбирайте с умом, исходя из планов на день!
                        </span>
