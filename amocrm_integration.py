@@ -666,27 +666,28 @@ def amocrm_callback(company_id: int):
 @login_required
 def sync_my_daily_stats():
     """
-    ALMATY SIPUNI FIX:
-    1. Время: Начало дня считается строго по Алматы (UTC+5).
-    2. Поиск: События 'note', где note_type='call_out'/'call_in'.
-    3. Авторство: Строго по полю 'created_by' == ID пользователя.
+    SYNC LOGIC BASED ON USER SNIPPET:
+    1. Timezone: Almaty (UTC+5).
+    2. Source: API Events (type=note).
+    3. Filter: note_type in [call_in, call_out] AND created_by == user_id.
     """
     user = current_user
 
-    # --- 1. РАСЧЕТ ВРЕМЕНИ ПО АЛМАТЫ (UTC+5) ---
+    # --- 1. Настройка времени (Алматы UTC+5) ---
     # Получаем текущее время в UTC
     utc_now = datetime.datetime.now(datetime.timezone.utc)
-    # Переводим в Алматинское время
-    almaty_tz = datetime.timezone(datetime.timedelta(hours=5))
-    almaty_now = utc_now.astimezone(almaty_tz)
+    # Сдвиг +5 часов
+    almaty_offset = datetime.timedelta(hours=5)
+    almaty_now = utc_now + almaty_offset
 
-    # Получаем начало дня (00:00:00) по Алматы
+    # Начало дня по Алматы (00:00:00)
     start_of_day_almaty = almaty_now.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    # Переводим этот момент обратно в timestamp для API AmoCRM
+    # Переводим обратно в timestamp (UTC) для запроса к API
+    # AmoCRM ожидает timestamp, который соответствует этому моменту времени
     filter_timestamp = int(start_of_day_almaty.timestamp())
 
-    # Для записи в БД берем дату по Алматы
+    # Дата для записи в БД (храним по дате Алматы)
     today_date = start_of_day_almaty.date()
 
     if not user.company_id:
@@ -708,22 +709,26 @@ def sync_my_daily_stats():
     if not conn or not conn.access_token:
         return jsonify({"error": "Company integration not active"}), 400
 
-    debug_log = []
-    debug_log.append(f"Almaty Time: {almaty_now}")
-    debug_log.append(f"Filter From (TS): {filter_timestamp}")
-    debug_log.append(f"Target User ID: {mapping.amocrm_user_id}")
+    # Лог для отладки (будет возвращен в ответе)
+    debug_log = [
+        f"Almaty Time: {almaty_now}",
+        f"Filter From TS: {filter_timestamp}",
+        f"My AmoID: {mapping.amocrm_user_id}"
+    ]
 
     try:
         my_amo_id = mapping.amocrm_user_id
 
-        # --- 2. СБОР ЗВОНКОВ (Created By User + Call Note) ---
+        # --- 2. СБОР ЗВОНКОВ ---
         calls_count = 0
         talk_seconds = 0
 
-        # Запрашиваем события создания примечаний
+        # Мы запрашиваем ЛЕНТУ СОБЫТИЙ (Events) с типом "note" (примечание).
+        # Это аналог вашего скрипта, но вместо перебора всех сделок, мы берем только то,
+        # что изменилось (появилось) сегодня.
         params_events = {
             "filter[created_at][from]": filter_timestamp,
-            "filter[type]": "note",  # Ищем примечания
+            "filter[type]": "note",
             "limit": 100
         }
 
@@ -731,53 +736,47 @@ def sync_my_daily_stats():
 
         if r_ev.status_code == 200:
             events = r_ev.json().get("_embedded", {}).get("events", [])
-            debug_log.append(f"Total notes events found: {len(events)}")
+            debug_log.append(f"Events found: {len(events)}")
 
             for ev in events:
-                # 1. СТРОГАЯ ПРОВЕРКА: created_by
+                # 1. Проверяем, кто создал запись (created_by из вашего скрипта)
                 creator_id = int(ev.get("created_by") or 0)
 
+                # Если примечание создал не наш менеджер - пропускаем
                 if creator_id != my_amo_id:
-                    continue  # Это не наш звонок
+                    continue
 
-                # 2. Разбираем содержимое
-                vals_after = ev.get("value_after", [])
-
-                # Обработка разных форматов ответа API
-                wrapper = None
-                if isinstance(vals_after, list) and vals_after:
-                    wrapper = vals_after[0]
-                elif isinstance(vals_after, dict):
-                    wrapper = vals_after
-
-                if not wrapper: continue
-
+                # 2. Достаем данные заметки
+                vals = ev.get("value_after", [])
+                # Обработка структуры (иногда список, иногда словарь)
+                wrapper = vals[0] if isinstance(vals, list) and vals else (vals if isinstance(vals, dict) else {})
                 note_data = wrapper.get("note", {})
 
-                # 3. СТРОГАЯ ПРОВЕРКА: note_type == call_out / call_in
-                note_type = str(note_data.get("note_type", ""))
+                if not note_data:
+                    continue
 
-                # SIPUNI использует "call_out", "call_in" или коды 10 (звонок), 11 (исходящий), 12 (входящий)
-                target_types = ["call_out", "call_in", "10", "11", "12", "13"]
+                # 3. Фильтр по типу (как в вашем скрипте)
+                # SIPUNI пишет типы: call_in, call_out (или коды 10, 11)
+                n_type = str(note_data.get("note_type", ""))
 
-                if note_type in target_types:
-                    # Это звонок!
+                if n_type in ["call_in", "call_out", "10", "11"]:
                     calls_count += 1
 
-                    # Достаем длительность
+                    # 4. Длительность
                     params = note_data.get("params", {})
+                    # В вашем скрипте ссылка на запись: params.get("link")
+                    # Длительность обычно там же: params.get("duration")
                     dur = params.get("duration")
                     if dur:
                         try:
                             talk_seconds += int(dur)
                         except:
                             pass
+        else:
+            debug_log.append(f"Events API Error: {r_ev.status_code}")
 
-                    # Лог успешного нахождения (первые 3 шт)
-                    if calls_count <= 3:
-                        debug_log.append(f"MATCH! Type: {note_type}, Dur: {dur}")
-
-        # --- 3. СБОР СДЕЛОК ---
+        # --- 3. СДЕЛКИ (Leads) ---
+        # Тут оставляем стандартную логику, она работает
         leads_created = 0
         leads_won = 0
         leads_lost = 0
@@ -806,8 +805,7 @@ def sync_my_daily_stats():
                 elif sid == LOST_STATUS_ID:
                     leads_lost += 1
 
-        # --- 4. СОХРАНЕНИЕ В БД ---
-        # Важно: сохраняем с датой по Алматы (today_date), чтобы история велась корректно
+        # --- 4. СОХРАНЕНИЕ ---
         stat_entry = db.session.execute(
             select(AmoCRMUserDailyStat).where(
                 and_(
