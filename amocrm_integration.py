@@ -666,9 +666,10 @@ def amocrm_callback(company_id: int):
 @login_required
 def sync_my_daily_stats():
     """
-    PAGINATION STRATEGY:
-    1. Перебираем все события за сегодня страницами (по 250 шт).
-    2. Внутри Python фильтруем: Note -> Responsible == Me -> Type == Call.
+    FIXED DURATION PARSING:
+    1. Ищет звонки (через пагинацию, работает).
+    2. "Жадно" ищет поле duration во всех возможных местах.
+    3. Логирует значение duration для каждого найденного звонка.
     """
     user = current_user
 
@@ -676,7 +677,6 @@ def sync_my_daily_stats():
     utc_now = datetime.datetime.now(datetime.timezone.utc)
     almaty_now = utc_now + datetime.timedelta(hours=5)
 
-    # Начало дня
     start_of_day_almaty = almaty_now.replace(hour=0, minute=0, second=0, microsecond=0)
     filter_timestamp = int(start_of_day_almaty.timestamp())
     today_date = start_of_day_almaty.date()
@@ -713,12 +713,9 @@ def sync_my_daily_stats():
         talk_seconds = 0
 
         page = 1
-        max_pages = 50  # Защита от бесконечного цикла (50 * 250 = 12500 событий максимум)
-        total_events_scanned = 0
+        max_pages = 50
 
         while page <= max_pages:
-            # Запрашиваем страницу событий
-            # Без фильтров по типу/автору, только дата
             params_events = {
                 "filter[created_at][from]": filter_timestamp,
                 "limit": 250,
@@ -728,98 +725,76 @@ def sync_my_daily_stats():
 
             r_ev = _amo_get(conn.base_domain, conn.access_token, "/api/v4/events", params_events)
 
-            if r_ev.status_code == 204:
-                # 204 No Content = данные закончились
-                break
-
-            if r_ev.status_code != 200:
-                debug_log.append(f"Page {page} Error: {r_ev.status_code}")
-                break
+            if r_ev.status_code == 204: break  # Конец данных
+            if r_ev.status_code != 200: break
 
             events = r_ev.json().get("_embedded", {}).get("events", [])
-            if not events:
-                break
-
-            total_events_scanned += len(events)
+            if not events: break
 
             # --- ОБРАБОТКА СТРАНИЦЫ ---
             for ev in events:
-                # Нам нужны только заметки (note) или события звонков
                 ev_type = ev.get("type")
 
-                # Достаем структуру данных
+                # Достаем данные
                 vals = ev.get("value_after", [])
                 wrapper = vals[0] if isinstance(vals, list) and vals else (vals if isinstance(vals, dict) else {})
 
-                # Данные заметки
                 note_data = wrapper.get("note", {})
 
-                # Если это не заметка, проверяем, может это прямой звонок (outgoing_call)
-                # (на всякий случай, если SIPUNI сменит формат)
-                if not note_data and ev_type not in ["note", "outgoing_call", "incoming_call"]:
-                    continue
-
                 # --- 1. ПРОВЕРКА ОТВЕТСТВЕННОГО ---
-                # Самое важное: кто указан ответственным ВНУТРИ данных
-                # (Если робот создал заметку, он ставит менеджера ответственным)
-
-                # Пытаемся найти responsible_user_id в note
                 target_resp_id = int(note_data.get("responsible_user_id") or 0)
-
-                # Если в note пусто, проверяем корневое событие (для outgoing_call)
                 if target_resp_id == 0:
-                    # Некоторые события имеют created_by, который нам нужен
+                    # Если ответственного нет в note, смотрим кто создал событие
                     if int(ev.get("created_by") or 0) == my_amo_id:
                         target_resp_id = my_amo_id
 
-                # Если звонок не относится к нашему юзеру - пропускаем
                 if target_resp_id != my_amo_id:
                     continue
 
-                # --- 2. ПРОВЕРКА ТИПА (ЗВОНОК ЛИ ЭТО?) ---
+                # --- 2. ЭТО ЗВОНОК? ---
                 is_call = False
-                duration = 0
+                raw_duration = None
 
-                # Вариант А: Это Note
+                # А. Проверка через Note (SIPUNI Style)
                 n_type = str(note_data.get("note_type", ""))
                 if n_type in ["call_in", "call_out", "10", "11", "12", "13"]:
                     is_call = True
+                    # Ищем duration в params
                     params = note_data.get("params", {})
-                    # Проверяем duration или наличие ссылки
-                    try:
-                        duration = int(params.get("duration") or 0)
-                    except:
-                        pass
+                    raw_duration = params.get("duration")
 
-                    # Если длительность 0, но есть ссылка - считаем звонком
-                    if duration == 0 and (params.get("link") or params.get("record_link") or params.get("uniq")):
-                        pass  # is_call уже True
-
-                # Вариант Б: Это событие outgoing_call/incoming_call
+                # Б. Проверка через Event Type (Native Style)
                 elif ev_type in ["outgoing_call", "incoming_call", "phone_call"]:
                     is_call = True
-                    # Ищем длительность в корне wrapper
-                    try:
-                        duration = int(wrapper.get("duration") or 0)
-                    except:
-                        pass
+                    # Ищем duration в корне wrapper или в params
+                    raw_duration = wrapper.get("duration")
+                    if raw_duration is None:
+                        raw_duration = wrapper.get("params", {}).get("duration")
 
                 if is_call:
                     calls_count += 1
-                    talk_seconds += duration
 
-            # Переход к следующей странице
-            # Проверяем, есть ли следующая страница в _links (стандарт HAL)
-            # или просто идем дальше, если вернулось 250 элементов
-            if len(events) < 250:
-                break
+                    # Пытаемся превратить raw_duration в число
+                    added_seconds = 0
+                    if raw_duration is not None:
+                        try:
+                            # Иногда приходит строка "55", иногда число 55
+                            added_seconds = int(float(raw_duration))
+                        except (ValueError, TypeError):
+                            pass
+
+                    talk_seconds += added_seconds
+
+                    # Логируем первые 5 находок для проверки минут
+                    if calls_count <= 5:
+                        debug_log.append(f"Call #{calls_count}: RawDur={raw_duration} -> Added={added_seconds}")
+
+            if len(events) < 250: break
             page += 1
 
-        debug_log.append(f"Scanned {total_events_scanned} events across {page} pages")
-        debug_log.append(f"Found {calls_count} calls")
+        debug_log.append(f"Total: {calls_count} calls, {talk_seconds} sec")
 
         # --- 3. СДЕЛКИ (Leads) ---
-        # (Стандартный код, он работает)
         leads_created = 0
         leads_won = 0
         leads_lost = 0
