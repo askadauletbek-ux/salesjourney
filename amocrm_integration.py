@@ -666,10 +666,9 @@ def amocrm_callback(company_id: int):
 @login_required
 def sync_my_daily_stats():
     """
-    SIPUNI NOTES FIX:
-    Ищем события создания примечаний (type='note').
-    Внутри события ищем структуру note -> note_type='call_out'/'call_in'.
-    Время: Алматы (UTC+5).
+    SIPUNI ULTIMATE FIX:
+    1. Запрашивает события БЕЗ фильтров по типу/автору (чтобы избежать 400 и роботов).
+    2. Ищет внутри note -> responsible_user_id (так как звонок создает робот, а ответственный - менеджер).
     """
     user = current_user
 
@@ -703,21 +702,18 @@ def sync_my_daily_stats():
 
     debug_log = [
         f"Almaty: {almaty_now}",
-        f"Target UserID: {my_amo_id}"
+        f"My AmoID: {my_amo_id}"
     ]
 
     try:
-        # --- 2. СБОР ЗВОНКОВ (Parsing Notes via Events) ---
+        # --- 2. СБОР ЗВОНКОВ ---
         calls_count = 0
         talk_seconds = 0
 
-        # Запрашиваем события, созданные пользователем
-        # filter[type]=note - искать только создания примечаний
-        # filter[created_by] - только созданные этим менеджером
+        # МИНИМАЛЬНЫЕ ПАРАМЕТРЫ ЗАПРОСА
+        # Убрали filter[type] и filter[created_by], чтобы получить всё и не получить 400
         params_events = {
             "filter[created_at][from]": filter_timestamp,
-            "filter[created_by][]": my_amo_id,
-            "filter[type]": "note",
             "limit": 100,
             "with": "note"
         }
@@ -726,38 +722,38 @@ def sync_my_daily_stats():
 
         if r_ev.status_code == 200:
             events = r_ev.json().get("_embedded", {}).get("events", [])
-            debug_log.append(f"Notes events found: {len(events)}")
+            debug_log.append(f"Raw events fetched: {len(events)}")
 
-            for i, ev in enumerate(events):
-                # Достаем содержимое (value_after)
+            for ev in events:
+                # Нас интересуют только события добавления примечаний
+                if ev.get("type") != "note":
+                    continue
+
+                # Достаем структуру Note
                 vals = ev.get("value_after", [])
-
-                # Защита от разных форматов (список/словарь)
-                wrapper = {}
-                if isinstance(vals, list) and vals:
-                    wrapper = vals[0]
-                elif isinstance(vals, dict):
-                    wrapper = vals
-
-                # Вот здесь лежит ТОТ САМЫЙ ОБЪЕКТ, который вы прислали
+                wrapper = vals[0] if isinstance(vals, list) and vals else (vals if isinstance(vals, dict) else {})
                 note_data = wrapper.get("note", {})
 
                 if not note_data:
                     continue
 
-                # Проверяем тип примечания (как в вашем JSON)
-                # "note_type": "call_out"
+                # --- ГЛАВНАЯ ПРОВЕРКА ---
+                # Проверяем ответственного ЗА ЗАМЕТКУ.
+                # SIPUNI ставит менеджера ответственным за note, даже если note создал робот.
+                note_resp = int(note_data.get("responsible_user_id") or 0)
+
+                if note_resp != my_amo_id:
+                    continue  # Заметка не наша
+
+                # --- ПРОВЕРКА НА ЗВОНОК ---
+                # Ищем типы звонков
                 n_type = str(note_data.get("note_type", ""))
 
-                # Список типов SIPUNI (call_out, call_in, и их цифровые коды)
-                if n_type in ["call_out", "call_in", "10", "11", "12", "13"]:
+                if n_type in ["call_in", "call_out", "10", "11", "12", "13"]:
 
-                    # Разбираем params (как в вашем JSON)
-                    # "params": { "duration": 55, ... }
                     params = note_data.get("params", {})
                     dur = params.get("duration")
-
-                    # Проверяем валидность (duration или наличие ссылки)
+                    # Проверка на наличие ссылки (иногда duration=0, но ссылка есть)
                     has_link = bool(params.get("link") or params.get("record_link") or params.get("uniq"))
 
                     if dur is not None or has_link:
@@ -767,10 +763,12 @@ def sync_my_daily_stats():
                         except:
                             pass
 
-                        if i < 5:
-                            debug_log.append(f"MATCH: {n_type}, Dur: {dur}")
+                        # Логируем первый найденный звонок для проверки
+                        if calls_count == 1:
+                            debug_log.append(f"FOUND CALL! Type: {n_type}, Dur: {dur}")
+
         else:
-            debug_log.append(f"API Error: {r_ev.status_code}")
+            debug_log.append(f"Events API Error: {r_ev.status_code}")
 
         # --- 3. СДЕЛКИ (Leads) ---
         leads_created = 0
