@@ -112,12 +112,91 @@
               class="px-4 py-2 rounded-2xl border border-[color:var(--sj-border)] font-semibold">
         <i class="fa-solid fa-users mr-2 text-white/60"></i>Сотрудники
       </button>
+      <button @click="tab='shop'"
+              :class="tab==='shop' ? 'bg-white/10' : 'bg-white/5 hover:bg-white/10'"
+              class="px-4 py-2 rounded-2xl border border-[color:var(--sj-border)] font-semibold">
+        <i class="fa-solid fa-store mr-2 text-white/60"></i>Магазин
+      </button>
       <button @click="tab='settings'"
               :class="tab==='settings' ? 'bg-white/10' : 'bg-white/5 hover:bg-white/10'"
               class="px-4 py-2 rounded-2xl border border-[color:var(--sj-border)] font-semibold">
         <i class="fa-solid fa-gear mr-2 text-white/60"></i>Настройки
       </button>
     </div>
+
+    </div>
+
+  <div class="mt-4" x-show="tab==='employees'">...</div>
+
+  <div class="mt-4" x-show="tab==='shop'">
+    <div class="grid lg:grid-cols-3 gap-6">
+        <div class="rounded-2xl border border-[color:var(--sj-border)] bg-black/20 p-5 h-fit">
+            <h3 class="font-bold text-lg mb-4 text-white">Добавить товар</h3>
+            <form action="/shop/partner/create" method="POST" class="space-y-3">
+                <input type="hidden" name="company_id" value="{{ company.id }}">
+
+                <div>
+                    <label class="text-xs text-[color:var(--sj-muted)]">Название</label>
+                    <input type="text" name="name" required placeholder="Например: Отгул на полдня"
+                           class="w-full mt-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none focus:border-violet-500">
+                </div>
+
+                <div>
+                    <label class="text-xs text-[color:var(--sj-muted)]">Цена (в коинах)</label>
+                    <input type="number" name="price" required placeholder="500"
+                           class="w-full mt-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none focus:border-amber-500">
+                </div>
+
+                <div>
+                    <label class="text-xs text-[color:var(--sj-muted)]">Картинка (URL)</label>
+                    <input type="url" name="image_url" placeholder="https://..."
+                           class="w-full mt-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none focus:border-blue-500">
+                    <div class="text-[10px] text-white/30 mt-1">Оставьте пустым для картинки по умолчанию.</div>
+                </div>
+
+                <button type="submit" class="w-full py-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold transition-colors">
+                    <i class="fa-solid fa-plus mr-2"></i> Создать товар
+                </button>
+            </form>
+        </div>
+
+        <div class="lg:col-span-2 space-y-3">
+            <h3 class="font-bold text-lg mb-2 text-white">Витрина компании</h3>
+            {% if company.shop_items %}
+                <div class="grid sm:grid-cols-2 gap-4">
+                    {% for item in company.shop_items %}
+                    <div class="flex items-center gap-4 p-4 rounded-2xl border border-white/10 bg-white/5 group">
+                        <div class="w-16 h-16 rounded-xl bg-black/40 flex-shrink-0 overflow-hidden border border-white/5">
+                            {% if item.image_url %}
+                                <img src="{{ item.image_url }}" class="w-full h-full object-cover">
+                            {% else %}
+                                <div class="w-full h-full flex items-center justify-center text-white/20">
+                                    <i class="fa-solid fa-gift text-2xl"></i>
+                                </div>
+                            {% endif %}
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="font-bold truncate text-white">{{ item.name }}</div>
+                            <div class="text-[color:var(--sj-amber)] font-mono font-bold">{{ item.price }} 💰</div>
+                        </div>
+                        <form action="/shop/partner/delete/{{ item.id }}" method="POST" onsubmit="return confirm('Удалить этот товар?');">
+                            <button class="w-8 h-8 rounded-lg bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white transition-colors">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </form>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="p-8 rounded-2xl border border-dashed border-white/10 text-center text-[color:var(--sj-muted)]">
+                    В магазине пока пусто. Добавьте мотивационные призы!
+                </div>
+            {% endif %}
+        </div>
+    </div>
+  </div>
+
+  <div class="mt-4" x-show="tab==='settings'">...</div>
 
     <div class="flex gap-2" x-show="tab==='employees'">
       <input id="empQ" placeholder="Поиск по имени/email…"

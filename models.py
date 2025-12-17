@@ -218,15 +218,21 @@ class ChallengeProgress(db.Model):
     challenge: Mapped["Challenge"] = relationship(back_populates="progress_records")
     user: Mapped["User"] = relationship(back_populates="challenge_progress")
 
+
 class ShopItem(db.Model):
     __tablename__ = 'shop_items'
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Ссылка на компанию. Если NULL — товар глобальный (виден всем)
+    company_id: Mapped[Optional[int]] = mapped_column(ForeignKey('companies.id'), nullable=True)
+
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     price: Mapped[int] = mapped_column(Integer, nullable=False)
     image_url: Mapped[str] = mapped_column(String(500), nullable=True)
-    type: Mapped[ShopItemType] = mapped_column(Enum(ShopItemType), default=ShopItemType.DIGITAL)
+    type: Mapped[ShopItemType] = mapped_column(Enum(ShopItemType), default=ShopItemType.REAL)  # Меняем дефолт на REAL
     attributes: Mapped[dict] = mapped_column(db.JSON, nullable=True, default=dict)
 
+    # Связи
+    company: Mapped[Optional["Company"]] = relationship(backref="shop_items")
 
 class UserInventory(db.Model):
     __tablename__ = 'user_inventory'
