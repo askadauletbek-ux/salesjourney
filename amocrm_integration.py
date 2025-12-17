@@ -666,9 +666,10 @@ def amocrm_callback(company_id: int):
 @login_required
 def sync_my_daily_stats():
     """
-    DEBUG STRUCTURE:
-    Находит первый звонок и выводит ВСЁ его содержимое (value_after) в лог.
-    Это покажет нам точный путь к полю duration.
+    PRODUCTION FIX FOR SIPUNI:
+    1. Перебирает все события (пагинация).
+    2. Правильно извлекает duration из корня объекта note (для outgoing_call).
+    3. Сохраняет данные в БД.
     """
     user = current_user
 
@@ -701,16 +702,13 @@ def sync_my_daily_stats():
 
     my_amo_id = mapping.amocrm_user_id
 
-    debug_log = [f"Searching for UserID: {my_amo_id}"]
-
     try:
-        # --- 2. СБОР ЗВОНКОВ (PAGINATION) ---
+        # --- 2. СБОР ЗВОНКОВ ---
         calls_count = 0
         talk_seconds = 0
 
         page = 1
-        max_pages = 20
-        structure_dumped = False
+        max_pages = 50
 
         while page <= max_pages:
             params_events = {
@@ -721,6 +719,8 @@ def sync_my_daily_stats():
             }
 
             r_ev = _amo_get(conn.base_domain, conn.access_token, "/api/v4/events", params_events)
+
+            if r_ev.status_code == 204: break
             if r_ev.status_code != 200: break
 
             events = r_ev.json().get("_embedded", {}).get("events", [])
@@ -733,64 +733,56 @@ def sync_my_daily_stats():
                 vals = ev.get("value_after", [])
                 wrapper = vals[0] if isinstance(vals, list) and vals else (vals if isinstance(vals, dict) else {})
 
-                # --- ЛОГИКА ОПРЕДЕЛЕНИЯ ЗВОНКА ---
+                note_data = wrapper.get("note", {})
+
+                # --- 1. ПРОВЕРКА ОТВЕТСТВЕННОГО ---
+                # Приоритет: ответственный внутри note -> создатель события
+                target_resp_id = int(note_data.get("responsible_user_id") or ev.get("created_by") or 0)
+
+                if target_resp_id != my_amo_id:
+                    continue
+
+                # --- 2. ЭТО ЗВОНОК? ---
                 is_call = False
 
-                # 1. Проверяем Note (SIPUNI Style)
-                note_data = wrapper.get("note", {})
+                # А. Проверка по типу Note (Стандарт)
                 n_type = str(note_data.get("note_type", ""))
-
                 if n_type in ["call_in", "call_out", "10", "11", "12", "13"]:
                     is_call = True
 
-                # 2. Проверяем Event Type (Native Style)
+                # Б. Проверка по типу События (Ваш случай: outgoing_call)
                 elif ev_type in ["outgoing_call", "incoming_call", "phone_call"]:
                     is_call = True
 
-                # --- ПРОВЕРКА ОТВЕТСТВЕННОГО ---
-                # (Упрощенная для дебага: если мы нашли звонок, проверяем структуру, даже если он чужой,
-                # но лучше все же проверить, чтобы не смотреть на чужие форматы)
-                target_resp = int(note_data.get("responsible_user_id") or ev.get("created_by") or 0)
-
-                if is_call and target_resp == my_amo_id:
+                if is_call:
                     calls_count += 1
 
-                    # !!! СБРОС СТРУКТУРЫ !!!
-                    # Логируем содержимое первого найденного звонка
-                    if not structure_dumped:
-                        import json
-                        # Превращаем в строку для чтения
-                        dump = json.dumps(wrapper, ensure_ascii=False)
-                        debug_log.append(f"TYPE: {ev_type}")
-                        debug_log.append(f"DUMP: {dump}")
-                        structure_dumped = True
-
-                    # Пытаемся найти длительность (как раньше)
+                    # --- 3. ИЗВЛЕЧЕНИЕ ДЛИТЕЛЬНОСТИ ---
                     dur = None
 
-                    # Попытка 1: В params заметки
-                    if note_data:
+                    # Вариант 1: Прямо в note (Ваш случай!)
+                    # Пример: {"note": {"duration": 70, ...}}
+                    dur = note_data.get("duration")
+
+                    # Вариант 2: Внутри params (Стандартный Note)
+                    # Пример: {"note": {"params": {"duration": 70}}}
+                    if dur is None:
                         dur = note_data.get("params", {}).get("duration")
 
-                    # Попытка 2: В корне wrapper
+                    # Вариант 3: В корне wrapper (Нативные события)
                     if dur is None:
                         dur = wrapper.get("duration")
 
-                    # Попытка 3: В params wrapper
-                    if dur is None:
-                        dur = wrapper.get("params", {}).get("duration")
-
+                    # Суммируем
                     try:
-                        talk_seconds += int(dur or 0)
-                    except:
+                        talk_seconds += int(float(dur or 0))
+                    except (ValueError, TypeError):
                         pass
 
             if len(events) < 250: break
             page += 1
 
-        debug_log.append(f"Total: {calls_count} calls, {talk_seconds} sec")
-
-        # --- 3. СДЕЛКИ (Оставляем рабочим) ---
+        # --- 3. СБОР СДЕЛОК ---
         leads_created = 0
         leads_won = 0
         leads_lost = 0
@@ -816,7 +808,10 @@ def sync_my_daily_stats():
         # --- 4. СОХРАНЕНИЕ ---
         stat_entry = db.session.execute(
             select(AmoCRMUserDailyStat).where(
-                and_(AmoCRMUserDailyStat.user_id == user.id, AmoCRMUserDailyStat.date == today_date)
+                and_(
+                    AmoCRMUserDailyStat.user_id == user.id,
+                    AmoCRMUserDailyStat.date == today_date
+                )
             )
         ).scalar_one_or_none()
 
@@ -837,12 +832,12 @@ def sync_my_daily_stats():
             "calls": stat_entry.calls_count,
             "minutes": stat_entry.minutes_talked,
             "conversion": stat_entry.conversion,
-            "updated_at_str": "Только что",
-            "debug_log": debug_log
+            "updated_at_str": "Только что"
         })
 
     except Exception as e:
-        return jsonify({"error": "Sync failed", "details": str(e), "debug_log": debug_log}), 500
+        current_app.logger.error(f"Sync error: {e}")
+        return jsonify({"error": "Sync failed", "details": str(e)}), 500
 
 @bp_amocrm_company_api.route("/<int:company_id>/crm/amocrm/sync", methods=["POST"])
 @partner_owns_company_required
