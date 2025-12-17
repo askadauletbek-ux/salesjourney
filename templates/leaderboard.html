@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% set title = "Зал славы — Sales Journey" %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <div class="text-center mb-10">
+        <h1 class="text-3xl font-black text-white mb-2">Зал славы</h1>
+        <p class="text-[color:var(--sj-muted)]">Топ сотрудников компании по накопленному опыту (XP).</p>
+    </div>
+
+    <div class="bg-[#101524] border border-[color:var(--sj-border)] rounded-3xl overflow-hidden shadow-2xl relative">
+        <div class="absolute top-0 right-0 p-32 bg-violet-500/5 blur-[100px] rounded-full pointer-events-none"></div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="border-b border-white/5 bg-black/20 text-xs uppercase tracking-wider text-[color:var(--sj-muted)]">
+                        <th class="p-5 font-bold w-16 text-center">#</th>
+                        <th class="p-5 font-bold">Сотрудник</th>
+                        <th class="p-5 font-bold text-right">Уровень</th>
+                        <th class="p-5 font-bold text-right">XP</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5">
+                    {% for emp in employees %}
+                    {% set is_me = (emp.id == current_user.id) %}
+                    <tr class="group transition-colors hover:bg-white/5 {{ 'bg-violet-500/10' if is_me else '' }}">
+                        <td class="p-5 text-center font-mono text-white/50 group-hover:text-white transition-colors">
+                            {% if loop.index == 1 %}🥇{% elif loop.index == 2 %}🥈{% elif loop.index == 3 %}🥉{% else %}{{ loop.index }}{% endif %}
+                        </td>
+                        <td class="p-5">
+                            <div class="flex items-center gap-4">
+                                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 border border-white/10 flex items-center justify-center font-bold text-white shadow-lg">
+                                    {{ (emp.username or emp.email)[:1].upper() }}
+                                </div>
+                                <div>
+                                    <div class="font-bold text-white flex items-center gap-2">
+                                        {{ emp.username }}
+                                        {% if is_me %}
+                                        <span class="px-2 py-0.5 rounded text-[10px] bg-violet-500 text-white font-bold shadow-lg shadow-violet-500/20">ВЫ</span>
+                                        {% endif %}
+                                    </div>
+                                    <div class="text-xs text-[color:var(--sj-muted)]">{{ emp.email }}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="p-5 text-right">
+                            <span class="inline-block px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs font-medium text-white/80">
+                                Lvl {{ ((emp.gamification_profile.xp or 0) // 1000) + 1 }}
+                            </span>
+                        </td>
+                        <td class="p-5 text-right">
+                            <div class="font-black text-[color:var(--sj-primary)] text-lg">
+                                {{ emp.gamification_profile.xp or 0 }}
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4" class="p-10 text-center text-[color:var(--sj-muted)]">
+                            Сотрудников пока нет. Пригласите коллег!
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -4,6 +4,8 @@ from typing import Optional
 from flask import Blueprint, jsonify, request, abort
 from flask_login import login_required, current_user
 from sqlalchemy import select, and_
+from flask import render_template
+from sqlalchemy import desc
 
 from extensions import db
 from models import User, GamificationProfile, DailyBuff, BuffType, Challenge, ChallengeProgress, ChallengeMode
@@ -86,6 +88,27 @@ def check_streak(profile: GamificationProfile) -> None:
     # Обновляем дату последней активности
     profile.last_activity_date = today
 
+
+@bp_gamification.route('/leaderboard')
+@login_required
+def leaderboard_page():
+    """Страница рейтинга сотрудников компании"""
+    user = current_user
+    if not user.company_id:
+        # Если пользователь без компании, показываем пустую страницу или редирект
+        return render_template('leaderboard.html', employees=[])
+
+    # Получаем всех сотрудников компании, сортируем по XP
+    # Используем join c GamificationProfile для сортировки
+    employees = db.session.execute(
+        select(User)
+        .join(GamificationProfile)
+        .where(User.company_id == user.company_id)
+        .order_by(desc(GamificationProfile.xp))
+        .limit(50) # Топ 50
+    ).scalars().all()
+
+    return render_template('leaderboard.html', employees=employees)
 
 # --- API Endpoints ---
 

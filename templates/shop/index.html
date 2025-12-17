@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% set title = "Магазин — Sales Journey" %}
+
+{% block content %}
+<div x-data="shop()" class="max-w-7xl mx-auto">
+
+    <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
+        <div>
+            <h1 class="text-3xl font-black text-white mb-2 flex items-center gap-3">
+                <i class="fa-solid fa-store text-violet-500"></i> Магазин наград
+            </h1>
+            <p class="text-[color:var(--sj-muted)]">Трать заработанные коины на реальные призы и цифровые бонусы.</p>
+        </div>
+
+        <div class="bg-[#101524] border border-[color:var(--sj-border)] rounded-2xl px-6 py-3 flex items-center gap-4 shadow-lg">
+            <div class="text-right">
+                <div class="text-xs text-[color:var(--sj-muted)] uppercase font-bold tracking-wider">Твой баланс</div>
+                <div class="text-2xl font-black text-[color:var(--sj-amber)]" x-text="balance">
+                    {{ user.gamification_profile.coins }}
+                </div>
+            </div>
+            <div class="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center text-[color:var(--sj-amber)]">
+                <i class="fa-solid fa-wallet text-xl"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        {% for item in items %}
+        <div class="relative group bg-[#101524] border border-[color:var(--sj-border)] rounded-3xl p-4 flex flex-col transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_10px_40px_-10px_rgba(124,58,237,0.2)]">
+
+            <div class="aspect-square rounded-2xl bg-black/40 mb-4 overflow-hidden relative">
+                {% if item.image_url %}
+                    <img src="{{ item.image_url }}" alt="{{ item.name }}" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110">
+                {% else %}
+                    <div class="w-full h-full flex items-center justify-center">
+                        {% if item.type.value == 'MYSTERY_BOX' %}
+                            <i class="fa-solid fa-box-open text-6xl text-violet-500/50 group-hover:text-violet-400 transition-colors animate-pulse"></i>
+                        {% else %}
+                            <i class="fa-solid fa-gift text-6xl text-white/10 group-hover:text-white/20 transition-colors"></i>
+                        {% endif %}
+                    </div>
+                {% endif %}
+
+                <div class="absolute top-3 right-3">
+                    {% if item.type.value == 'MYSTERY_BOX' %}
+                        <span class="px-2 py-1 rounded-lg bg-violet-600 text-white text-[10px] font-bold uppercase tracking-wide shadow-lg">Mystery</span>
+                    {% elif item.company_id %}
+                         <span class="px-2 py-1 rounded-lg bg-blue-600 text-white text-[10px] font-bold uppercase tracking-wide shadow-lg">От компании</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="flex-1 flex flex-col">
+                <h3 class="font-bold text-white text-lg leading-tight mb-1">{{ item.name }}</h3>
+                <p class="text-xs text-[color:var(--sj-muted)] line-clamp-2 mb-4">
+                    {% if item.type.value == 'MYSTERY_BOX' %}
+                        Испытай удачу! Внутри может быть что угодно.
+                    {% else %}
+                        Полезная награда для работы и отдыха.
+                    {% endif %}
+                </p>
+
+                <div class="mt-auto flex items-center justify-between gap-3">
+                    <div class="text-[color:var(--sj-amber)] font-black text-xl">
+                        {{ item.price }} <span class="text-sm font-normal opacity-70">¢</span>
+                    </div>
+
+                    <button @click="buyItem({{ item.id }})"
+                            :disabled="buying || balance < {{ item.price }}"
+                            class="px-4 py-2 rounded-xl font-bold text-sm transition-all duration-200 flex items-center gap-2"
+                            :class="balance >= {{ item.price }} ? 'bg-white text-black hover:bg-violet-400 hover:text-white' : 'bg-white/5 text-white/20 cursor-not-allowed'">
+                        <span x-show="!buying">Купить</span>
+                        <i x-show="buying" class="fa-solid fa-circle-notch fa-spin"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="col-span-full py-20 text-center">
+            <div class="inline-flex w-20 h-20 rounded-3xl bg-white/5 items-center justify-center mb-4">
+                <i class="fa-solid fa-store-slash text-3xl text-[color:var(--sj-muted)]"></i>
+            </div>
+            <h3 class="text-xl font-bold text-white">Витрина пуста</h3>
+            <p class="text-[color:var(--sj-muted)] mt-2">Попросите руководителя добавить товары в магазин.</p>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div x-show="showPrizeModal" style="display: none;"
+         class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+         x-transition.opacity>
+        <div class="bg-[#101524] border border-violet-500/30 rounded-3xl p-8 max-w-sm w-full text-center relative overflow-hidden animate-bounce-in">
+            <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-violet-500/20 blur-[80px] rounded-full"></div>
+
+            <div class="relative z-10">
+                <div class="mb-6 text-6xl animate-bounce">🎁</div>
+                <h2 class="text-2xl font-black text-white mb-2">Поздравляем!</h2>
+                <p class="text-violet-200 mb-6">Вы открыли коробку и получили:</p>
+
+                <div class="bg-black/40 rounded-2xl p-6 border border-white/10 mb-6">
+                    <div class="text-xl font-bold text-[color:var(--sj-amber)]" x-text="prizeName"></div>
+                </div>
+
+                <button @click="showPrizeModal = false" class="w-full py-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold">
+                    Забрать приз
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function shop() {
+        return {
+            buying: false,
+            balance: {{ user.gamification_profile.coins }},
+            showPrizeModal: false,
+            prizeName: '',
+
+            async buyItem(id) {
+                if(!confirm('Подтверждаете покупку?')) return;
+
+                this.buying = true;
+                try {
+                    const res = await fetch('/shop/buy', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ item_id: id })
+                    });
+                    const data = await res.json();
+
+                    if(res.ok) {
+                        this.balance = data.new_balance;
+
+                        if(data.is_mystery) {
+                            this.prizeName = data.prize.name;
+                            this.showPrizeModal = true;
+                        } else {
+                            Alpine.store('toasts').push({
+                                title: 'Покупка успешна!',
+                                text: `Вы купили "${data.item_name}"`,
+                                tone: 'ok'
+                            });
+                        }
+                    } else {
+                        Alpine.store('toasts').push({title: 'Ошибка', text: data.error, tone: 'err'});
+                    }
+                } catch(e) {
+                    console.error(e);
+                    Alpine.store('toasts').push({title: 'Ошибка', text: 'Сбой сети', tone: 'err'});
+                } finally {
+                    this.buying = false;
+                }
+            }
+        }
+    }
+</script>
+{% endblock %}

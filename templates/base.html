@@ -102,14 +102,33 @@
 
   <header class="sticky top-0 z-40 border-b border-[color:var(--sj-border)] bg-black/25 backdrop-blur">
     <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-      <a href="/" class="flex items-center gap-3">
-        <div class="w-24 h-10 grid place-items-center">
-            <img src="/static/brand/logo.png"
-       width="500" height="200"
-    class=" select-none brand-logo-light"
-    decoding="async" fetchpriority="high">
-        </div>
-      </a>
+      <div class="flex items-center gap-8">
+          <a href="/" class="flex items-center gap-3">
+            <div class="w-24 h-10 grid place-items-center">
+                <img src="/static/brand/logo.png"
+           width="500" height="200"
+        class=" select-none brand-logo-light"
+        decoding="async" fetchpriority="high">
+            </div>
+          </a>
+
+          {% if current_user.is_authenticated %}
+          <nav class="hidden md:flex items-center gap-6">
+              <a href="/dashboard"
+                 class="text-sm font-bold transition-colors hover:text-white {{ 'text-white' if request.path == '/dashboard' else 'text-[color:var(--sj-muted)]' }}">
+                  Дашборд
+              </a>
+              <a href="/leaderboard"
+                 class="text-sm font-bold transition-colors hover:text-white {{ 'text-white' if request.path == '/leaderboard' else 'text-[color:var(--sj-muted)]' }}">
+                  Рейтинг
+              </a>
+              <a href="/shop"
+                 class="text-sm font-bold transition-colors hover:text-white {{ 'text-white' if request.path.startswith('/shop') else 'text-[color:var(--sj-muted)]' }}">
+                  Магазин
+              </a>
+          </nav>
+          {% endif %}
+      </div>
 
       <div class="flex items-center gap-2">
         {% if current_user.is_authenticated %}
