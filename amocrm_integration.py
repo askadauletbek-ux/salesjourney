@@ -666,10 +666,9 @@ def amocrm_callback(company_id: int):
 @login_required
 def sync_my_daily_stats():
     """
-    FIXED DURATION PARSING:
-    1. Ищет звонки (через пагинацию, работает).
-    2. "Жадно" ищет поле duration во всех возможных местах.
-    3. Логирует значение duration для каждого найденного звонка.
+    DEBUG STRUCTURE:
+    Находит первый звонок и выводит ВСЁ его содержимое (value_after) в лог.
+    Это покажет нам точный путь к полю duration.
     """
     user = current_user
 
@@ -702,18 +701,16 @@ def sync_my_daily_stats():
 
     my_amo_id = mapping.amocrm_user_id
 
-    debug_log = [
-        f"Almaty Today: {start_of_day_almaty}",
-        f"Searching for UserID: {my_amo_id}"
-    ]
+    debug_log = [f"Searching for UserID: {my_amo_id}"]
 
     try:
-        # --- 2. СБОР ЗВОНКОВ (PAGINATION LOOP) ---
+        # --- 2. СБОР ЗВОНКОВ (PAGINATION) ---
         calls_count = 0
         talk_seconds = 0
 
         page = 1
-        max_pages = 50
+        max_pages = 20
+        structure_dumped = False
 
         while page <= max_pages:
             params_events = {
@@ -724,14 +721,11 @@ def sync_my_daily_stats():
             }
 
             r_ev = _amo_get(conn.base_domain, conn.access_token, "/api/v4/events", params_events)
-
-            if r_ev.status_code == 204: break  # Конец данных
             if r_ev.status_code != 200: break
 
             events = r_ev.json().get("_embedded", {}).get("events", [])
             if not events: break
 
-            # --- ОБРАБОТКА СТРАНИЦЫ ---
             for ev in events:
                 ev_type = ev.get("type")
 
@@ -739,71 +733,75 @@ def sync_my_daily_stats():
                 vals = ev.get("value_after", [])
                 wrapper = vals[0] if isinstance(vals, list) and vals else (vals if isinstance(vals, dict) else {})
 
-                note_data = wrapper.get("note", {})
-
-                # --- 1. ПРОВЕРКА ОТВЕТСТВЕННОГО ---
-                target_resp_id = int(note_data.get("responsible_user_id") or 0)
-                if target_resp_id == 0:
-                    # Если ответственного нет в note, смотрим кто создал событие
-                    if int(ev.get("created_by") or 0) == my_amo_id:
-                        target_resp_id = my_amo_id
-
-                if target_resp_id != my_amo_id:
-                    continue
-
-                # --- 2. ЭТО ЗВОНОК? ---
+                # --- ЛОГИКА ОПРЕДЕЛЕНИЯ ЗВОНКА ---
                 is_call = False
-                raw_duration = None
 
-                # А. Проверка через Note (SIPUNI Style)
+                # 1. Проверяем Note (SIPUNI Style)
+                note_data = wrapper.get("note", {})
                 n_type = str(note_data.get("note_type", ""))
+
                 if n_type in ["call_in", "call_out", "10", "11", "12", "13"]:
                     is_call = True
-                    # Ищем duration в params
-                    params = note_data.get("params", {})
-                    raw_duration = params.get("duration")
 
-                # Б. Проверка через Event Type (Native Style)
+                # 2. Проверяем Event Type (Native Style)
                 elif ev_type in ["outgoing_call", "incoming_call", "phone_call"]:
                     is_call = True
-                    # Ищем duration в корне wrapper или в params
-                    raw_duration = wrapper.get("duration")
-                    if raw_duration is None:
-                        raw_duration = wrapper.get("params", {}).get("duration")
 
-                if is_call:
+                # --- ПРОВЕРКА ОТВЕТСТВЕННОГО ---
+                # (Упрощенная для дебага: если мы нашли звонок, проверяем структуру, даже если он чужой,
+                # но лучше все же проверить, чтобы не смотреть на чужие форматы)
+                target_resp = int(note_data.get("responsible_user_id") or ev.get("created_by") or 0)
+
+                if is_call and target_resp == my_amo_id:
                     calls_count += 1
 
-                    # Пытаемся превратить raw_duration в число
-                    added_seconds = 0
-                    if raw_duration is not None:
-                        try:
-                            # Иногда приходит строка "55", иногда число 55
-                            added_seconds = int(float(raw_duration))
-                        except (ValueError, TypeError):
-                            pass
+                    # !!! СБРОС СТРУКТУРЫ !!!
+                    # Логируем содержимое первого найденного звонка
+                    if not structure_dumped:
+                        import json
+                        # Превращаем в строку для чтения
+                        dump = json.dumps(wrapper, ensure_ascii=False)
+                        debug_log.append(f"TYPE: {ev_type}")
+                        debug_log.append(f"DUMP: {dump}")
+                        structure_dumped = True
 
-                    talk_seconds += added_seconds
+                    # Пытаемся найти длительность (как раньше)
+                    dur = None
 
-                    # Логируем первые 5 находок для проверки минут
-                    if calls_count <= 5:
-                        debug_log.append(f"Call #{calls_count}: RawDur={raw_duration} -> Added={added_seconds}")
+                    # Попытка 1: В params заметки
+                    if note_data:
+                        dur = note_data.get("params", {}).get("duration")
+
+                    # Попытка 2: В корне wrapper
+                    if dur is None:
+                        dur = wrapper.get("duration")
+
+                    # Попытка 3: В params wrapper
+                    if dur is None:
+                        dur = wrapper.get("params", {}).get("duration")
+
+                    try:
+                        talk_seconds += int(dur or 0)
+                    except:
+                        pass
 
             if len(events) < 250: break
             page += 1
 
         debug_log.append(f"Total: {calls_count} calls, {talk_seconds} sec")
 
-        # --- 3. СДЕЛКИ (Leads) ---
+        # --- 3. СДЕЛКИ (Оставляем рабочим) ---
         leads_created = 0
         leads_won = 0
         leads_lost = 0
 
+        # Created
         r_cr = _amo_get(conn.base_domain, conn.access_token, "/api/v4/leads", {
             "filter[created_at][from]": filter_timestamp, "filter[responsible_user_id]": my_amo_id
         })
         if r_cr.status_code == 200: leads_created = len(r_cr.json().get("_embedded", {}).get("leads", []))
 
+        # Closed
         r_cl = _amo_get(conn.base_domain, conn.access_token, "/api/v4/leads", {
             "filter[closed_at][from]": filter_timestamp, "filter[responsible_user_id]": my_amo_id
         })
