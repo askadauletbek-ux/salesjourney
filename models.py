@@ -269,8 +269,10 @@ class AmoCRMUserDailyStat(db.Model):
 
     @property
     def conversion(self):
-        if self.leads_created > 0:
-            return round((self.leads_won / self.leads_created) * 100, 1)
+        # Считаем Win Rate: Успешные / (Успешные + Проваленные)
+        total_closed = self.leads_won + self.leads_lost
+        if total_closed > 0:
+            return round((self.leads_won / total_closed) * 100, 1)
         return 0.0
 
     @property
