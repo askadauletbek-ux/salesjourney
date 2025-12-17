@@ -246,6 +246,21 @@ def create_app():
         companies = partner.companies if partner else []
         return render_template('partner_companies.html', companies=companies)
 
+    @app.route('/leaderboard')
+    @login_required
+    def leaderboard():
+        # Получаем сотрудников компании, сортируем по XP (от большего к меньшему)
+        # Если у пользователя нет компании, список будет пуст
+        employees = []
+        if current_user.company_id:
+            employees = User.query.filter_by(company_id=current_user.company_id) \
+                .join(GamificationProfile) \
+                .order_by(GamificationProfile.xp.desc()) \
+                .limit(50) \
+                .all()
+
+        return render_template('leaderboard.html', employees=employees)
+
     @app.route('/partner/company/<int:company_id>')
     @login_required
     def partner_company(company_id: int):
