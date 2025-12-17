@@ -12,8 +12,7 @@ from sqlalchemy import select, and_
 from extensions import db, login_manager
 
 # Импорт моделей
-from models import User, GamificationProfile, ShopItem, ShopItemType, UserRole, Company, PartnerUser, AmoCRMUserDailyStat, AmoCRMUserMap
-
+from models import User, GamificationProfile, ShopItem, ShopItemType, UserRole, Company, PartnerUser, AmoCRMUserDailyStat, AmoCRMUserMap, DailyBuff, BuffType
 # Импорт модулей (Blueprints)
 from amocrm_integration import bp_amocrm_company_api, bp_amocrm_pages
 from gamification import bp_gamification
@@ -262,7 +261,58 @@ def create_app():
             abort(403)
 
         employees = User.query.filter_by(company_id=company.id).all()
-        return render_template('partner_company.html', company=company, employees=employees)
+
+        # --- Сбор статистики и расчет очков ---
+        today = date.today()
+        employees_data = []
+
+        for emp in employees:
+            # 1. Получаем выбранную стратегию (Buff)
+            buff_entry = db.session.execute(
+                select(DailyBuff).where(
+                    and_(DailyBuff.user_id == emp.id, DailyBuff.date == today)
+                )
+            ).scalar_one_or_none()
+            current_buff = buff_entry.buff_type if buff_entry else None
+
+            # 2. Получаем статистику звонков/продаж
+            stats = db.session.execute(
+                select(AmoCRMUserDailyStat).where(
+                    and_(AmoCRMUserDailyStat.user_id == emp.id, AmoCRMUserDailyStat.date == today)
+                )
+            ).scalar_one_or_none()
+
+            calls = stats.calls_count if stats else 0
+            sales = stats.leads_won if stats else 0
+
+            # 3. Расчет очков (XP) по правилам стратегий
+            # База: Звонок = 10 XP, Продажа = 500 XP
+            score = 0
+            if current_buff == BuffType.WOODPECKER:
+                # Дятел: x2 за звонки, x0.5 за продажи
+                score = (calls * 20) + (sales * 250)
+            elif current_buff == BuffType.SHARK:
+                # Акула: x0.5 за звонки, x2 за продажи
+                score = (calls * 5) + (sales * 1000)
+            elif current_buff == BuffType.ZEN:
+                # Дзен: Стандарт + бонус 200 XP за спокойствие
+                score = (calls * 10) + (sales * 500) + 200
+            else:
+                # Стандарт (Не выбрано)
+                score = (calls * 10) + (sales * 500)
+
+            employees_data.append({
+                'user': emp,
+                'buff': current_buff,
+                'calls': calls,
+                'sales': sales,
+                'score': int(score)
+            })
+
+        # Сортировка: Лидеры по очкам вверху
+        employees_data.sort(key=lambda x: x['score'], reverse=True)
+
+        return render_template('partner_company.html', company=company, employees_data=employees_data)
 
     # ==========================
     # SUPER ADMIN LOGIC
