@@ -20,9 +20,16 @@ def allowed_file(filename):
 @login_required
 def get_feed():
     """Получение объединенной ленты (посты + системные события)"""
-    company_id = current_user.company_id
+    # Исправление: Приоритет параметру из URL (для партнеров), затем профилю юзера
+    company_id = request.args.get('company_id', type=int) or current_user.company_id
     if not company_id:
         return jsonify([])
+
+    # Проверка прав: если юзер партнер, он должен владеть этой компанией
+    if current_user.role in [UserRole.PARTNER, UserRole.COMPANY_OWNER]:
+        company = db.session.get(Company, company_id)
+        if not company or (current_user.partner_profile and company.owner_partner_id != current_user.partner_profile.id):
+            abort(403)
 
     # Получаем посты
     posts = Post.query.filter_by(company_id=company_id).order_by(Post.created_at.desc()).limit(20).all()
@@ -70,6 +77,16 @@ def create_post():
     if current_user.role not in [UserRole.PARTNER, UserRole.COMPANY_OWNER]:
         abort(403)
 
+    # Исправление: Получаем ID компании из формы (для партнеров)
+    company_id = request.form.get('company_id', type=int) or current_user.company_id
+    if not company_id:
+        return jsonify({'error': 'Company ID is required'}), 400
+
+    # Проверка владения компанией
+    company = db.session.get(Company, company_id)
+    if not company or (current_user.partner_profile and company.owner_partner_id != current_user.partner_profile.id):
+        abort(403)
+
     content = request.form.get('content')
     if not content:
         return jsonify({'error': 'Content is required'}), 400
@@ -85,7 +102,7 @@ def create_post():
             image_url = f"/static/uploads/feed/{filename}"
 
     new_post = Post(
-        company_id=current_user.company_id,
+        company_id=company_id,  # Используем проверенный ID
         author_id=current_user.id,
         content=content,
         image_url=image_url

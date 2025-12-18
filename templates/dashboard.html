@@ -29,7 +29,7 @@
             </div>
             <div class="h-4 rounded-full bg-white/5 border border-white/5 overflow-hidden">
                 <div class="h-full bg-gradient-to-r from-violet-600 via-fuchsia-500 to-white shadow-[0_0_20px_rgba(124,58,237,0.5)] transition-all duration-1000"
-                     :style="`width: ${stats.squad ? stats.squad.percent : 0}%`"></div>
+                     :style="`width: ${stats.squad ? stats.squad.percent : 0}%`" ></div>
             </div>
             <div class="mt-2 flex justify-between text-xs text-[color:var(--sj-muted)]">
                 <span>Старт</span>
@@ -470,9 +470,15 @@
       async loadFeed() {
           try {
               const r = await fetch('/api/feed/list');
+              if (!r.ok) return;
               const data = await r.json();
-              this.items = data; // Сохраняем оригинал для отладки
-              this.feedItems = data.map(x => ({...x, open: false, tempComm: ''}));
+              // Исправление: удалена лишняя переменная this.items
+              this.feedItems = data.map(x => ({
+                  ...x,
+                  open: false,
+                  tempComm: '',
+                  comments: x.comments || []
+              }));
           } catch(e) { console.error("Feed error", e); }
       },
 

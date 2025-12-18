@@ -313,7 +313,7 @@
     </div>
   </div>
 
-  <div x-show="tab==='feed'" x-data="feedAdmin()">
+  <div x-show="tab==='feed'" x-data="feedAdmin({{ company.id }})">
     <style>
       .admin-f-card { background: rgba(255,255,255,0.03); border: 1px solid var(--sj-border); border-radius: 20px; padding: 20px; margin-bottom: 15px; }
       .p-input { background: rgba(0,0,0,0.2); border: 1px solid var(--sj-border); border-radius: 12px; padding: 12px; width: 100%; color: white; outline: none; transition: border-color 0.2s; }
@@ -360,20 +360,22 @@
     </div>
 
     <script>
-      function feedAdmin() {
+      function feedAdmin(companyId) {
         return {
           feedItems: [], postText: '', file: null,
           init() {
             this.load();
           },
           async load() {
-            const r = await fetch('/api/feed/list');
+            // Исправление: передаем company_id
+            const r = await fetch(`/api/feed/list?company_id=${companyId}`);
             this.feedItems = await r.json();
           },
           async sendPost() {
             if(!this.postText) return;
             const fd = new FormData();
             fd.append('content', this.postText);
+            fd.append('company_id', companyId); // Исправление: добавляем в форму
             if(this.file) fd.append('image', this.file);
 
             const r = await fetch('/api/feed/post/create', { method: 'POST', body: fd });
