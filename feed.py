@@ -5,7 +5,10 @@ from flask import Blueprint, request, jsonify, current_app, render_template, abo
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 from extensions import db, socketio
-from models import Post, Comment, Like, User, FeedEvent, UserRole, Company
+from models import Post, Comment, Like, User, FeedEvent, UserRole, Company, DailyStory
+from datetime import date, timedelta
+from flask import send_file
+import io
 
 bp_feed = Blueprint('feed', __name__, url_prefix='/api/feed')
 
@@ -38,13 +41,19 @@ def get_feed():
 
     combined_feed = []
 
+    # Исправление: добавляем company_id в фильтр (важно для партнеров)
+    company_id = request.args.get('company_id', type=int) or current_user.company_id
+    if not company_id:
+        return jsonify([])
+
     for p in posts:
         combined_feed.append({
-            'id': p.id,
+            'id': f"post_{p.id}",  # Уникальный префикс для ключа Alpine.js
             'type': 'post',
             'author': p.author.username,
             'content': p.content,
-            'image_url': p.image_url,
+            # Ссылка теперь ведет на внутренний API роут
+            'image_url': f"/api/feed/image/{p.id}" if p.image_data else None,
             'created_at': p.created_at.isoformat(),
             'likes_count': len(p.likes),
             'is_liked': any(l.user_id == current_user.id for l in p.likes),
@@ -57,7 +66,7 @@ def get_feed():
 
     for e in events:
         combined_feed.append({
-            'id': e.id,
+            'id': f"event_{e.id}",  # Уникальный префикс для ключа Alpine.js
             'type': 'system',
             'event_type': e.event_type,
             'message': e.message,
@@ -69,6 +78,16 @@ def get_feed():
     combined_feed.sort(key=lambda x: x['created_at'], reverse=True)
     return jsonify(combined_feed)
 
+@bp_feed.route('/image/<int:post_id>')
+def serve_post_image(post_id):
+    """Выдает изображение прямо из базы данных Postgres"""
+    post = db.session.get(Post, post_id)
+    if not post or not post.image_data:
+        abort(404)
+    return send_file(
+        io.BytesIO(post.image_data),
+        mimetype=post.image_mimetype or 'image/jpeg'
+    )
 
 @bp_feed.route('/post/create', methods=['POST'])
 @login_required
@@ -77,35 +96,30 @@ def create_post():
     if current_user.role not in [UserRole.PARTNER, UserRole.COMPANY_OWNER]:
         abort(403)
 
-    # Исправление: Получаем ID компании из формы (для партнеров)
+    # Исправление: Получаем ID компании из формы (у Партнеров current_user.company_id == None)
     company_id = request.form.get('company_id', type=int) or current_user.company_id
     if not company_id:
         return jsonify({'error': 'Company ID is required'}), 400
-
-    # Проверка владения компанией
-    company = db.session.get(Company, company_id)
-    if not company or (current_user.partner_profile and company.owner_partner_id != current_user.partner_profile.id):
-        abort(403)
 
     content = request.form.get('content')
     if not content:
         return jsonify({'error': 'Content is required'}), 400
 
-    image_url = None
+    image_data = None
+    image_mimetype = None
     if 'image' in request.files:
         file = request.files['image']
         if file and allowed_file(file.filename):
-            filename = secure_filename(f"{uuid.uuid4().hex}_{file.filename}")
-            upload_path = os.path.join(current_app.root_path, 'static/uploads/feed')
-            os.makedirs(upload_path, exist_ok=True)
-            file.save(os.path.join(upload_path, filename))
-            image_url = f"/static/uploads/feed/{filename}"
+            # Читаем файл в память для сохранения в БД
+            image_data = file.read()
+            image_mimetype = file.mimetype
 
     new_post = Post(
-        company_id=company_id,  # Используем проверенный ID
+        company_id=company_id,
         author_id=current_user.id,
         content=content,
-        image_url=image_url
+        image_data=image_data,
+        image_mimetype=image_mimetype
     )
     db.session.add(new_post)
     db.session.commit()
@@ -132,6 +146,36 @@ def toggle_like(post_id):
     db.session.commit()
     return jsonify({'ok': True, 'status': status})
 
+
+# SalesJourney/feed.py
+
+@bp_feed.route('/stories', methods=['GET'])
+@login_required
+def get_stories():
+    yesterday = date.today() - timedelta(days=1)
+    stories = DailyStory.query.filter_by(company_id=current_user.company_id, date=yesterday).all()
+
+    res = []
+    type_map = {
+        'CALLS': {'label': 'Король звонков', 'icon': 'fa-phone', 'color': 'cyan'},
+        'CONV': {'label': 'Мастер конверсии', 'icon': 'fa-percent', 'color': 'emerald'},
+        'WINS': {'label': 'Закрыватор', 'icon': 'fa-money-bill-trend-up', 'color': 'amber'}
+    }
+
+    for s in stories:
+        tm = type_map.get(s.story_type, type_map['CALLS'])
+        res.append({
+            'id': s.id,
+            'user_id': s.user_id,          # <--- Добавлено: ID пользователя
+            'username': s.user.username,
+            'has_avatar': bool(s.user.avatar_data), # <--- Добавлено: флаг аватара
+            'type_label': tm['label'],
+            'icon': tm['icon'],
+            'color': tm['color'],
+            'value': s.value,
+            'unit': '%' if s.story_type == 'CONV' else ''
+        })
+    return jsonify(res)
 
 @bp_feed.route('/post/<int:post_id>/comment', methods=['POST'])
 @login_required

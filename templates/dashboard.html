@@ -5,6 +5,106 @@
 
 <div x-data="gameDashboard()" x-init="initDashboard()" class="relative min-h-[80vh]">
 
+  <div class="mb-8 flex items-center justify-between p-6 rounded-3xl border border-white/5 bg-white/5 backdrop-blur-md animate-fade-in">
+      <div class="flex items-center gap-5">
+          <div class="relative group cursor-pointer" @click="showProfileModal = true">
+              <template x-if="userHasAvatar">
+                  <img :src="'/api/user/avatar/' + userId" class="w-16 h-16 rounded-2xl object-cover border-2 border-violet-500/50 shadow-lg shadow-violet-500/20">
+              </template>
+              <template x-if="!userHasAvatar">
+                  <div class="w-16 h-16 rounded-2xl bg-violet-600 grid place-items-center text-2xl font-black text-black shadow-lg shadow-violet-500/20" x-text="stats.username[0].toUpperCase()"></div>
+              </template>
+
+              <div class="absolute inset-0 bg-black/40 rounded-2xl opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                  <i class="fa-solid fa-camera text-white text-sm"></i>
+              </div>
+          </div>
+          <div>
+              <h2 class="text-xl font-black text-white" x-text="stats.username"></h2>
+              <p class="text-[10px] text-[color:var(--sj-muted)] font-bold uppercase tracking-[0.2em]" x-text="userRoleLabel"></p>
+          </div>
+      </div>
+
+      <button @click="showProfileModal = true" class="w-12 h-12 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition-all text-white/40 hover:text-white flex items-center justify-center">
+          <i class="fa-solid fa-user-pen"></i>
+      </button>
+  </div>
+
+  <div x-show="showProfileModal"
+       x-transition.opacity
+       class="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm"
+       style="display: none;">
+      <div class="w-full max-w-md bg-[#0f121d] border border-white/10 rounded-[40px] p-8 shadow-2xl relative" @click.away="showProfileModal = false">
+          <h3 class="text-2xl font-black text-white mb-6 tracking-tight">Настройки профиля</h3>
+
+          <div class="space-y-6">
+              <div>
+                  <label class="text-[10px] font-black uppercase text-white/30 tracking-widest block mb-2">Имя в системе</label>
+                  <input type="text" x-model="editName" class="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-white focus:outline-none focus:border-violet-500/50 transition-all">
+              </div>
+
+              <div>
+                  <label class="text-[10px] font-black uppercase text-white/30 tracking-widest block mb-2">Новая аватарка</label>
+                  <label class="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-white/10 rounded-2xl cursor-pointer hover:bg-white/5 transition-all">
+                      <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                          <i class="fa-solid fa-cloud-arrow-up text-violet-400 text-2xl mb-2"></i>
+                          <p class="text-xs text-white/40 font-bold" x-text="avatarFile ? avatarFile.name : 'Нажмите для выбора'"></p>
+                      </div>
+                      <input type="file" class="hidden" @change="onAvatarSelect" accept="image/*" />
+                  </label>
+              </div>
+
+              <div class="flex gap-4 pt-4">
+                  <button @click="saveProfile"
+                          :disabled="isSavingProfile"
+                          class="flex-1 py-4 rounded-2xl bg-violet-600 text-black font-black uppercase text-[10px] tracking-widest hover:bg-violet-500 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                      <i x-show="isSavingProfile" class="fa-solid fa-circle-notch fa-spin"></i>
+                      <span x-text="isSavingProfile ? 'Сохранение...' : 'Сохранить'"></span>
+                  </button>
+                  <button @click="showProfileModal = false" class="flex-1 py-4 rounded-2xl bg-white/5 text-white font-black uppercase text-[10px] tracking-widest hover:bg-white/10 transition-all border border-white/5">Отмена</button>
+              </div>
+          </div>
+      </div>
+  </div>
+
+  <div x-show="stories.length > 0" class="mb-10 flex gap-4 overflow-x-auto no-scrollbar py-2 px-1">
+      <template x-for="story in stories" :key="story.id">
+    <div @click="activeStory = story" class="flex-shrink-0 flex flex-col items-center gap-2 cursor-pointer group">
+        <div class="w-16 h-16 rounded-full p-1 bg-gradient-to-tr from-violet-600 via-rose-500 to-amber-500 animate-gradient-xy">
+            <div class="w-full h-full rounded-full bg-[#0f121d] flex items-center justify-center border-2 border-[#0f121d] overflow-hidden">
+                <template x-if="story.has_avatar">
+                    <img :src="'/api/user/avatar/' + story.user_id" class="w-full h-full object-cover">
+                </template>
+                <template x-if="!story.has_avatar">
+                    <div class="w-12 h-12 rounded-full bg-violet-600 grid place-items-center font-black text-black text-lg" x-text="story.username[0].toUpperCase()"></div>
+                </template>
+            </div>
+        </div>
+        <span class="text-[9px] font-black uppercase tracking-tighter text-white/40 group-hover:text-white transition-colors" x-text="story.type_label"></span>
+    </div>
+</template>
+  </div>
+
+  <template x-if="activeStory">
+      <div class="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/95 backdrop-blur-xl" @click.self="activeStory = null">
+          <div class="w-full max-w-sm rounded-[40px] bg-gradient-to-b from-violet-600/20 to-transparent border border-white/10 p-10 text-center relative overflow-hidden">
+              <div class="absolute top-0 left-0 w-full h-1 bg-white/20">
+                  <div class="h-full bg-white animate-[progress_3s_linear]" @animationend="activeStory = null"></div>
+              </div>
+              <button @click="activeStory = null" class="absolute top-6 right-6 text-white/40 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
+
+              <div class="w-24 h-24 rounded-3xl bg-violet-600 mx-auto mb-6 grid place-items-center text-4xl font-black text-black shadow-2xl" x-text="activeStory.username[0].toUpperCase()"></div>
+              <h2 class="text-3xl font-black text-white mb-2" x-text="activeStory.username"></h2>
+              <div class="inline-block px-4 py-1 rounded-full bg-white/5 border border-white/10 text-violet-400 text-xs font-black uppercase tracking-widest mb-8" x-text="activeStory.type_label"></div>
+
+              <div class="text-6xl font-black text-white tracking-tighter mb-2">
+                  <span x-text="activeStory.value"></span><span class="text-2xl ml-1" x-text="activeStory.unit"></span>
+              </div>
+              <div class="text-[10px] font-black uppercase text-white/20 tracking-[0.2em]">Результат за вчера</div>
+          </div>
+      </div>
+  </template>
+
   <div x-show="stats.squad" x-transition class="mb-8 p-1 rounded-2xl bg-gradient-to-r from-violet-600/20 to-fuchsia-600/20 border border-violet-500/20 relative group">
     <div class="absolute -top-3 -right-3 z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
          <div class="relative group/tooltip">
@@ -350,79 +450,92 @@
     </div>
   </div>
 
-  <div class="mt-12">
+  <div class="mt-16 max-w-4xl mx-auto px-4">
       <style>
-          .f-card { background: var(--sj-card); border: 1px solid var(--sj-border); border-radius: 24px; margin-bottom: 20px; overflow: hidden; transition: border-color 0.2s; }
-          .f-card:hover { border-color: rgba(124, 58, 237, 0.3); }
-          .f-card.record { border-color: rgba(34, 211, 238, 0.4); background: linear-gradient(145deg, rgba(34, 211, 238, 0.05), transparent); }
-          .post-img { width: 100%; max-height: 400px; object-fit: cover; border-bottom: 1px solid var(--sj-border); }
-          .comment-box { background: rgba(0,0,0,0.2); border-top: 1px solid var(--sj-border); padding: 15px; }
+          .feed-timeline { position: relative; padding-left: 2.5rem; }
+          .feed-timeline::before { content: ''; position: absolute; left: 0.75rem; top: 0; bottom: 0; width: 2px; background: linear-gradient(to bottom, var(--sj-primary) 0%, transparent 100%); opacity: 0.15; }
+          .feed-node { position: absolute; left: 0.15rem; width: 1.25rem; height: 1.25rem; background: #0f121d; border: 3px solid var(--sj-primary); border-radius: 50%; z-index: 10; margin-top: 1.5rem; box-shadow: 0 0 15px var(--sj-primary); }
+          .smart-card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 30px; backdrop-filter: blur(12px); overflow: hidden; transition: all 0.3s; margin-bottom: 2.5rem; }
+          .record-badge { background: linear-gradient(90deg, rgba(34,211,238,0.1) 0%, transparent 100%); border: 1px solid rgba(34,211,238,0.2); border-radius: 20px; padding: 1rem 1.25rem; display: flex; align-items: center; gap: 1rem; margin-bottom: 2rem; }
+          .smart-img { width: 100%; max-height: 500px; object-fit: cover; margin-top: 1rem; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1); display: block; }
       </style>
 
-      <h2 class="text-xl font-bold text-white mb-6 flex items-center gap-2">
-         <i class="fa-solid fa-newspaper text-cyan-400"></i> Новости и достижения
-      </h2>
+      <div class="flex items-center justify-between mb-8">
+          <h2 class="text-2xl font-black text-white tracking-tight flex items-center gap-3">
+             <i class="fa-solid fa-fire-pulse text-amber-500"></i> Жизнь компании
+          </h2>
+          <span class="text-[10px] font-black uppercase tracking-[0.2em] text-white/30">Live Updates</span>
+      </div>
 
-      <div class="max-w-2xl mx-auto space-y-4">
+      <div class="feed-timeline">
           <template x-for="item in feedItems" :key="item.id">
-              <div :class="item.type === 'system' ? 'f-card record p-5' : 'f-card'">
+              <div class="relative">
+                  <div class="feed-node"></div>
+
                   <template x-if="item.type === 'system'">
-                      <div class="flex items-center gap-4">
-                          <div class="w-12 h-12 rounded-full bg-cyan-500/20 flex items-center justify-center text-cyan-400">
-                              <i class="fa-solid fa-fire-flame-curved"></i>
+                      <div class="record-badge">
+                          <div class="w-10 h-10 rounded-xl bg-cyan-500/20 flex items-center justify-center text-cyan-400 border border-cyan-500/30">
+                              <i class="fa-solid fa-trophy"></i>
                           </div>
-                          <div class="flex-1">
-                              <p class="font-bold text-sm leading-tight text-white/90" x-text="item.message"></p>
-                              <span class="text-[10px] text-[color:var(--sj-muted)] uppercase font-bold" x-text="formatDate(item.created_at)"></span>
+                          <div class="flex-1 min-w-0">
+                              <p class="font-bold text-sm text-white/90" x-text="item.message"></p>
+                              <div class="text-[9px] text-white/30 font-black uppercase mt-1" x-text="formatDate(item.created_at)"></div>
                           </div>
                       </div>
                   </template>
 
                   <template x-if="item.type === 'post'">
-                      <div>
-                          <div class="p-5 flex items-center gap-3">
-                              <div class="w-10 h-10 rounded-xl bg-violet-600 grid place-items-center font-bold text-black" x-text="item.author[0].toUpperCase()"></div>
-                              <div>
-                                  <div class="font-bold text-sm text-white" x-text="item.author"></div>
-                                  <div class="text-[10px] text-[color:var(--sj-muted)]" x-text="formatDate(item.created_at)"></div>
+                      <div class="smart-card">
+                          <div class="p-6">
+                              <div class="flex items-center justify-between mb-4">
+                                  <div class="flex items-center gap-3">
+                                      <div class="w-10 h-10 rounded-xl bg-violet-600 flex items-center justify-center text-black font-black" x-text="item.author[0].toUpperCase()"></div>
+                                      <div>
+                                          <div class="font-black text-sm text-white" x-text="item.author"></div>
+                                          <div class="text-[10px] text-white/40" x-text="formatDate(item.created_at)"></div>
+                                      </div>
+                                  </div>
                               </div>
-                          </div>
-                          <div class="px-5 pb-4 text-sm text-white/80 leading-relaxed" x-text="item.content"></div>
-                          <template x-if="item.image_url">
-                              <img :src="item.image_url" class="post-img">
-                          </template>
+                              <div class="text-white/80 leading-relaxed" x-text="item.content"></div>
 
-                          <div class="px-5 py-3 flex items-center gap-4 border-t border-white/5">
-                              <button @click="likePost(item)" class="flex items-center gap-1 text-sm font-bold transition-colors" :class="item.is_liked ? 'text-rose-500' : 'text-[color:var(--sj-muted)] hover:text-white'">
+                              <template x-if="item.image_url && item.image_url !== ''">
+                                  <div class="mt-4 rounded-2xl overflow-hidden bg-black/40 border border-white/5">
+                                      <img :src="item.image_url"
+                                           class="smart-img"
+                                           loading="lazy"
+                                           @error="console.log('Image failed:', item.image_url)">
+                                  </div>
+                              </template>
+                          </div>
+
+                          <div class="px-6 py-4 flex items-center gap-6 bg-white/5 border-t border-white/5">
+                              <button @click="likePost(item)" class="flex items-center gap-2 text-sm font-bold transition-colors" :class="item.is_liked ? 'text-rose-500' : 'text-white/40 hover:text-white'">
                                   <i :class="item.is_liked ? 'fa-solid fa-heart' : 'fa-regular fa-heart'"></i>
                                   <span x-text="item.likes_count"></span>
                               </button>
-                              <button @click="item.open = !item.open" class="text-[color:var(--sj-muted)] hover:text-white text-sm font-bold">
-                                  <i class="fa-regular fa-comment"></i> <span x-text="item.comments.length"></span>
+                              <button @click="item.open = !item.open" class="flex items-center gap-2 text-white/40 hover:text-white text-sm font-bold transition-colors">
+                                  <i class="fa-regular fa-comment"></i>
+                                  <span x-text="item.comments.length"></span>
                               </button>
                           </div>
 
-                          <div x-show="item.open" x-transition class="comment-box">
-                              <template x-for="c in item.comments">
-                                  <div class="text-xs mb-2 pb-2 border-b border-white/5 last:border-0">
-                                      <b class="text-violet-400" x-text="c.username"></b>: <span class="text-white/70" x-text="c.text"></span>
-                                  </div>
-                              </template>
-                              <div class="flex gap-2 mt-3">
-                                  <input x-model="item.tempComm" @keyup.enter="sendComment(item)" class="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-violet-500/50" placeholder="Ваш ответ...">
+                          <div x-show="item.open" x-transition class="bg-black/20 p-6 border-t border-white/5">
+                              <div class="space-y-4 mb-4">
+                                  <template x-for="c in item.comments">
+                                      <div class="flex gap-3 text-xs">
+                                          <div class="font-black text-violet-400" x-text="c.username + ':'"></div>
+                                          <div class="text-white/70" x-text="c.text"></div>
+                                      </div>
+                                  </template>
                               </div>
+                              <input x-model="item.tempComm" @keyup.enter="sendComment(item)" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:border-violet-500/50" placeholder="Ваш ответ...">
                           </div>
                       </div>
                   </template>
               </div>
           </template>
-
-          <div x-show="feedItems.length === 0" class="text-center py-10 text-[color:var(--sj-muted)] italic">
-              В ленте пока пусто. Будь первым, кто установит рекорд сегодня!
-          </div>
       </div>
   </div>
-
 </div>
 {% endblock %}
 
@@ -430,15 +543,54 @@
 <script>
   function gameDashboard() {
     return {
+      // Состояние пользователя и профиля
+      userId: {{ current_user.id }},
+      userHasAvatar: {{ 'true' if current_user.avatar_data else 'false' }},
+      userRoleLabel: "{{ current_user.role.value }}",
+      showProfileModal: false,
+      isSavingProfile: false,
+      editName: "{{ current_user.username or '' }}",
+      avatarFile: null,
+
       // Состояние игры
       loading: false,
       currentBuff: null,
       stats: {
+        username: "{{ current_user.username or 'Сотрудник' }}",
         coins: {{ user.gamification_profile.coins or 0 }},
         xp: {{ user.gamification_profile.xp or 0 }},
         streak: {{ user.gamification_profile.current_streak or 0 }},
         level: {{ (user.gamification_profile.xp // 1000) + 1 }},
         squad: null
+      },
+
+      onAvatarSelect(e) {
+          this.avatarFile = e.target.files[0];
+      },
+
+      async saveProfile() {
+          this.isSavingProfile = true;
+          const fd = new FormData();
+          fd.append('username', this.editName);
+          if (this.avatarFile) fd.append('avatar', this.avatarFile);
+
+          try {
+              const r = await fetch('/api/user/profile/update', { method: 'POST', body: fd });
+              if (r.ok) {
+                  this.stats.username = this.editName;
+                  if (this.avatarFile) {
+                      // Принудительно обновляем страницу для сброса кеша картинок
+                      location.reload();
+                  } else {
+                      this.showProfileModal = false;
+                      Alpine.store('toasts').push({title:'Успешно', text:'Профиль обновлен', tone:'ok'});
+                  }
+              }
+          } catch(e) {
+              console.error(e);
+          } finally {
+              this.isSavingProfile = false;
+          }
       },
 
       // Состояние AmoCRM
@@ -454,6 +606,7 @@
       initDashboard() {
         this.fetchStatus();
         this.loadFeed(); // Загрузка ленты
+        this.loadStories(); // Загрузка сторис
         if (this.amoLinked) {
             this.syncAmoStats();
         }
@@ -465,6 +618,16 @@
         });
       },
 
+      // --- Сторис ---
+      stories: [],
+      activeStory: null,
+      async loadStories() {
+          try {
+              const r = await fetch('/api/feed/stories');
+              if (r.ok) this.stories = await r.json();
+          } catch(e) { console.error("Stories error", e); }
+      },
+
       // --- Лента ---
       feedItems: [],
       async loadFeed() {
@@ -472,16 +635,19 @@
               const r = await fetch('/api/feed/list');
               if (!r.ok) return;
               const data = await r.json();
-              // Исправление: удалена лишняя переменная this.items
+
+              // Превращаем данные в реактивный список для Alpine
               this.feedItems = data.map(x => ({
                   ...x,
                   open: false,
                   tempComm: '',
+                  // Гарантируем наличие массива комментариев даже для системных событий
                   comments: x.comments || []
               }));
-          } catch(e) { console.error("Feed error", e); }
+          } catch(e) {
+              console.error("Feed error", e);
+          }
       },
-
       async likePost(i) {
           const r = await fetch(`/api/feed/post/${i.id}/like`, {method: 'POST'});
           const d = await r.json();

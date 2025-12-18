@@ -2,11 +2,13 @@ import os
 import uuid
 import secrets
 from datetime import date  # <--- Добавлен этот импорт
-from flask import Flask, render_template, redirect, url_for, request, flash, abort
+from flask import Flask, render_template, redirect, url_for, request, flash, abort, jsonify
 from flask_login import login_user, logout_user, current_user, login_required
 from sqlalchemy import or_
 from extensions import socketio
 from sqlalchemy import select, and_
+from flask import send_file
+import io
 
 # Импорт расширений
 from extensions import db, login_manager
@@ -189,6 +191,7 @@ def create_app():
         stat = db.session.execute(select(AmoCRMUserDailyStat).where(and_(AmoCRMUserDailyStat.user_id == user_id,
                                                                          AmoCRMUserDailyStat.date == date.today()))).scalar_one_or_none()
         return render_template('user_profile.html', target_user=u, stats=stat)
+
 
     @app.route('/logout')
     def logout():
@@ -433,6 +436,36 @@ def create_app():
             flash(f"Ошибка при создании: {str(e)}", "error")
 
         return redirect(url_for('super_admin_panel'))
+
+    @app.route('/api/user/avatar/<int:user_id>')
+    def serve_avatar(user_id):
+        """Выдает аватар пользователя из БД"""
+        user = db.session.get(User, user_id)
+        if not user or not user.avatar_data:
+            # Если аватара нет, можно вернуть 404 или дефолтную заглушку
+            abort(404)
+        return send_file(
+            io.BytesIO(user.avatar_data),
+            mimetype=user.avatar_mimetype or 'image/png'
+        )
+
+    @app.route('/api/user/profile/update', methods=['POST'])
+    @login_required
+    def update_profile():
+        """Обновление имени и аватара"""
+        new_username = request.form.get('username')
+        avatar_file = request.files.get('avatar')
+
+        if new_username:
+            # Проверка на уникальность (опционально)
+            current_user.username = new_username
+
+        if avatar_file and avatar_file.filename != '':
+            current_user.avatar_data = avatar_file.read()
+            current_user.avatar_mimetype = avatar_file.mimetype
+
+        db.session.commit()
+        return jsonify({"ok": True, "username": current_user.username})
 
     @app.route(f'/{ADMIN_PATH}/delete/company/<int:company_id>', methods=['POST'])
     @login_required

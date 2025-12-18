@@ -313,79 +313,188 @@
     </div>
   </div>
 
-  <div x-show="tab==='feed'" x-data="feedAdmin({{ company.id }})">
+  <div x-show="tab==='feed'" x-data="feedAdmin({{ company.id }})" class="space-y-12">
     <style>
-      .admin-f-card { background: rgba(255,255,255,0.03); border: 1px solid var(--sj-border); border-radius: 20px; padding: 20px; margin-bottom: 15px; }
-      .p-input { background: rgba(0,0,0,0.2); border: 1px solid var(--sj-border); border-radius: 12px; padding: 12px; width: 100%; color: white; outline: none; transition: border-color 0.2s; }
-      .p-input:focus { border-color: var(--sj-primary); }
+      /* Стили формы (Top Section) */
+      .admin-f-card { background: rgba(255,255,255,0.02); border: 1px solid var(--sj-border); border-radius: 30px; padding: 24px; position: relative; }
+      .p-input { background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05); border-radius: 18px; padding: 16px; width: 100%; color: white; outline: none; transition: all 0.2s; }
+      .p-input:focus { border-color: var(--sj-primary); background: rgba(0,0,0,0.5); }
+
+      .preview-box { width: 100%; height: 200px; border-radius: 18px; overflow: hidden; margin-top: 15px; border: 2px dashed rgba(255,255,255,0.1); position: relative; background: #000; }
+      .preview-box img { width: 100%; height: 100%; object-fit: cover; }
+      .preview-box .remove-btn { position: absolute; top: 10px; right: 10px; width: 32px; height: 32px; background: rgba(0,0,0,0.8); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; border: 1px solid rgba(255,255,255,0.2); }
+
+      /* Стили Ленты (Dashboard Style) */
+      .feed-timeline { position: relative; padding-left: 2.5rem; }
+      .feed-timeline::before { content: ''; position: absolute; left: 0.75rem; top: 0; bottom: 0; width: 2px; background: linear-gradient(to bottom, var(--sj-primary) 0%, transparent 100%); opacity: 0.15; }
+      .feed-node { position: absolute; left: 0.15rem; width: 1.25rem; height: 1.25rem; background: #0f121d; border: 3px solid var(--sj-primary); border-radius: 50%; z-index: 10; margin-top: 1.5rem; box-shadow: 0 0 15px var(--sj-primary); }
+      .smart-card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 30px; backdrop-filter: blur(12px); overflow: hidden; transition: all 0.3s; margin-bottom: 2.5rem; }
+      .record-pill { background: linear-gradient(90deg, rgba(34,211,238,0.1) 0%, transparent 100%); border: 1px solid rgba(34,211,238,0.2); border-radius: 24px; padding: 1.25rem 1.5rem; display: flex; align-items: center; gap: 1.25rem; margin-bottom: 2rem; }
+      .smart-img { width: 100%; max-height: 450px; object-fit: cover; margin-top: 1rem; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1); display: block; }
+      .interaction-bar { display: flex; gap: 1.5rem; padding: 1rem 1.5rem; background: rgba(255,255,255,0.02); border-top: 1px solid rgba(255,255,255,0.05); }
     </style>
 
-    <div class="grid lg:grid-cols-2 gap-6">
-      <div>
-        <h3 class="font-bold text-lg mb-4 text-white">Новая публикация</h3>
+    <div class="max-w-3xl mx-auto">
+        <h3 class="font-black text-xl mb-4 text-white flex items-center gap-3">
+            <i class="fa-solid fa-pen-nib text-violet-500"></i> Создать публикацию
+        </h3>
         <div class="admin-f-card">
-          <textarea x-model="postText" class="p-input text-sm mb-3" rows="4" placeholder="Текст сообщения для всех сотрудников..."></textarea>
+          <textarea x-model="postText" class="p-input text-md" rows="4" placeholder="Важное объявление для сотрудников..."></textarea>
 
-          <div class="flex items-center justify-between">
-            <label class="flex items-center gap-2 cursor-pointer text-[color:var(--sj-muted)] hover:text-white transition-colors">
-              <i class="fa-solid fa-camera"></i>
-              <span class="text-xs font-bold">Добавить фото</span>
-              <input type="file" @change="file = $event.target.files[0]" class="hidden">
-            </label>
-            <span x-show="file" class="text-[10px] text-emerald-400 font-bold" x-text="file.name"></span>
+          <div x-show="imagePreview" class="preview-box">
+             <img :src="imagePreview">
+             <button @click="clearFile" class="remove-btn hover:bg-rose-600 transition-colors">
+                 <i class="fa-solid fa-xmark"></i>
+             </button>
           </div>
 
-          <button @click="sendPost()" class="w-full mt-4 py-3 rounded-xl bg-[color:var(--sj-primary)] text-white font-bold hover:opacity-90 transition-all">
-            Опубликовать в ленте
-          </button>
-        </div>
-      </div>
+          <div class="flex items-center justify-between mt-6">
+            <label class="flex items-center gap-3 cursor-pointer px-5 py-2.5 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition-all text-white/70 hover:text-white">
+              <i class="fa-solid fa-image text-cyan-400 text-lg"></i>
+              <span class="text-xs font-black uppercase tracking-widest">Добавить фото</span>
+              <input type="file" @change="onFileChange" class="hidden" accept="image/*">
+            </label>
 
-      <div>
-        <h3 class="font-bold text-lg mb-4 text-white">Последние события</h3>
-        <div class="max-h-[500px] overflow-y-auto pr-2 space-y-3">
-          <template x-for="item in feedItems" :key="item.id">
-            <div class="p-4 rounded-xl border border-white/5 bg-white/5 flex gap-3">
-              <div class="w-8 h-8 rounded bg-white/10 flex-shrink-0 grid place-items-center">
-                <i :class="item.type === 'system' ? 'fa-solid fa-robot text-cyan-400' : 'fa-solid fa-user text-violet-400'"></i>
-              </div>
-              <div class="min-w-0">
-                <div class="text-[11px] font-bold text-white/40 mb-1" x-text="formatDate(item.created_at)"></div>
-                <div class="text-xs text-white/80 line-clamp-3" x-text="item.content || item.message"></div>
-              </div>
-            </div>
-          </template>
+            <button @click="sendPost()"
+                    :disabled="isSending || (!postText && !file)"
+                    class="px-10 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-black uppercase text-xs tracking-widest transition-all shadow-lg shadow-violet-600/20 flex items-center gap-2 disabled:opacity-50">
+              <i x-show="isSending" class="fa-solid fa-circle-notch fa-spin"></i>
+              <span x-text="isSending ? 'Публикуем...' : 'Опубликовать'"></span>
+            </button>
+          </div>
         </div>
-      </div>
+    </div>
+
+    <div class="max-w-3xl mx-auto">
+        <div class="flex items-center justify-between mb-8">
+            <h3 class="font-black text-xl text-white tracking-tight flex items-center gap-3">
+               <i class="fa-solid fa-clock-rotate-left text-amber-500"></i> Журнал ленты
+            </h3>
+            <span class="text-[10px] font-black uppercase tracking-[0.2em] text-white/30">Live Admin View</span>
+        </div>
+
+        <div class="feed-timeline">
+            <template x-for="item in feedItems" :key="item.id">
+                <div class="relative">
+                    <div class="feed-node" :class="item.type === 'system' ? 'scale-75 opacity-50' : ''"></div>
+
+                    <template x-if="item.type === 'system'">
+                        <div class="record-pill" :class="item.event_type === 'RECORD_CONV' ? 'border-amber-500/30 bg-amber-500/5' : ''">
+                            <div class="w-10 h-10 rounded-xl bg-cyan-500/20 flex items-center justify-center text-cyan-400 border border-cyan-500/30">
+                                <i :class="item.event_type === 'RECORD_CONV' ? 'fa-solid fa-trophy text-amber-400' : 'fa-solid fa-rocket'"></i>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="font-bold text-sm text-white/90" x-text="item.message"></p>
+                                <div class="text-[9px] text-white/30 font-black uppercase mt-1" x-text="formatDate(item.created_at)"></div>
+                            </div>
+                        </div>
+                    </template>
+
+                    <template x-if="item.type === 'post'">
+                        <div class="smart-card">
+                            <div class="p-6">
+                                <div class="flex items-center gap-3 mb-4">
+                                    <div class="w-10 h-10 rounded-xl bg-violet-600 flex items-center justify-center text-black font-black" x-text="item.author[0].toUpperCase()"></div>
+                                    <div>
+                                        <div class="font-black text-sm text-white" x-text="item.author"></div>
+                                        <div class="text-[10px] text-white/40 font-bold" x-text="formatDate(item.created_at)"></div>
+                                    </div>
+                                </div>
+                                <div class="text-white/80 leading-relaxed" x-text="item.content"></div>
+
+                                <template x-if="item.image_url && item.image_url !== ''">
+                                    <div class="mt-4 rounded-2xl overflow-hidden bg-black/40 border border-white/5">
+                                        <img :src="item.image_url" class="smart-img" loading="lazy">
+                                    </div>
+                                </template>
+                            </div>
+
+                            <div class="interaction-bar text-xs font-bold text-white/40">
+                                <div class="flex items-center gap-2"><i class="fa-solid fa-heart"></i> <span x-text="item.likes_count"></span></div>
+                                <div class="flex items-center gap-2"><i class="fa-solid fa-comment"></i> <span x-text="item.comments.length"></span></div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </template>
+
+            <div x-show="feedItems.length === 0" class="py-20 text-center opacity-20">
+                <i class="fa-solid fa-ghost text-4xl mb-4"></i>
+                <div class="text-sm font-black uppercase tracking-widest">Здесь пока тихо</div>
+            </div>
+        </div>
     </div>
 
     <script>
       function feedAdmin(companyId) {
         return {
-          feedItems: [], postText: '', file: null,
+          feedItems: [],
+          postText: '',
+          file: null,
+          imagePreview: null,
+          isSending: false,
+
           init() {
             this.load();
+            // Подписка на сокеты для мгновенного обновления
+            const socket = io();
+            socket.on('new_post', () => this.load());
+            socket.on('new_feed_item', () => this.load());
           },
-          async load() {
-            // Исправление: передаем company_id
-            const r = await fetch(`/api/feed/list?company_id=${companyId}`);
-            this.feedItems = await r.json();
-          },
-          async sendPost() {
-            if(!this.postText) return;
-            const fd = new FormData();
-            fd.append('content', this.postText);
-            fd.append('company_id', companyId); // Исправление: добавляем в форму
-            if(this.file) fd.append('image', this.file);
 
-            const r = await fetch('/api/feed/post/create', { method: 'POST', body: fd });
-            if(r.ok) {
-              this.postText = ''; this.file = null;
-              this.load();
-              Alpine.store('toasts').push({title:'Успех', text:'Пост опубликован', tone:'ok'});
+          onFileChange(e) {
+            const f = e.target.files[0];
+            if (f) {
+              this.file = f;
+              this.imagePreview = URL.createObjectURL(f);
             }
           },
-          formatDate(s) { return new Date(s).toLocaleString(); }
+
+          clearFile() {
+            this.file = null;
+            if (this.imagePreview) {
+              URL.revokeObjectURL(this.imagePreview);
+              this.imagePreview = null;
+            }
+          },
+
+          async load() {
+            try {
+              const r = await fetch(`/api/feed/list?company_id=${companyId}`);
+              this.feedItems = await r.json();
+            } catch(e) { console.error("Load failed", e); }
+          },
+
+          async sendPost() {
+            if(!this.postText && !this.file) return;
+            this.isSending = true;
+
+            const fd = new FormData();
+            fd.append('content', this.postText);
+            fd.append('company_id', companyId);
+            if(this.file) fd.append('image', this.file);
+
+            try {
+              const r = await fetch('/api/feed/post/create', { method: 'POST', body: fd });
+              if(r.ok) {
+                this.postText = '';
+                this.clearFile();
+                await this.load(); // Мгновенно обновляем список
+                Alpine.store('toasts').push({title:'Опубликовано', text:'Запись появилась в ленте', tone:'ok', icon:'fa-solid fa-check'});
+              } else {
+                const err = await r.json();
+                Alpine.store('toasts').push({title:'Ошибка', text: err.error || 'Не удалось отправить', tone:'err'});
+              }
+            } catch(e) {
+              console.error("Post error", e);
+            } finally {
+              this.isSending = false;
+            }
+          },
+
+          formatDate(s) {
+            return new Date(s).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+          }
         }
       }
     </script>

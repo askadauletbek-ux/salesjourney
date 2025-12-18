@@ -51,6 +51,9 @@ class User(db.Model, UserMixin):
     username: Mapped[str] = mapped_column(String(100), unique=True, nullable=True)  # nullable, т.к. вход по email
     email: Mapped[str] = mapped_column(String(120), unique=True, nullable=False, index=True)
 
+    # НОВОЕ: Поля для аватара (храним в БД)
+    avatar_data: Mapped[Optional[bytes]] = mapped_column(db.LargeBinary, nullable=True)
+    avatar_mimetype: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     # НОВОЕ: Храним не пароль, а его хеш
     password_hash: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
 
@@ -257,6 +260,9 @@ class Post(db.Model):
     author_id: Mapped[int] = mapped_column(ForeignKey('users.id'), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    # НОВОЕ: Поле для хранения самого файла в Postgres
+    image_data: Mapped[Optional[bytes]] = mapped_column(db.LargeBinary, nullable=True)
+    image_mimetype: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     author: Mapped["User"] = relationship(back_populates="posts")
@@ -297,6 +303,17 @@ class FeedEvent(db.Model):
     user: Mapped["User"] = relationship()
     company: Mapped["Company"] = relationship() # Связь для фильтрации по компании
 
+class DailyStory(db.Model):
+    __tablename__ = 'daily_stories'
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey('companies.id'), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id'), nullable=False)
+    story_type: Mapped[str] = mapped_column(String(50), nullable=False) # 'CALLS', 'CONV', 'WINS'
+    value: Mapped[float] = mapped_column(db.Float, nullable=False)
+    date: Mapped[date] = mapped_column(Date, nullable=False) # За какой день итог
+
+    user: Mapped["User"] = relationship()
+    company: Mapped["Company"] = relationship()
 
 class AmoCRMUserDailyStat(db.Model):
     __tablename__ = 'amocrm_user_daily_stats'
