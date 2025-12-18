@@ -18,6 +18,7 @@ from amocrm_integration import bp_amocrm_company_api, bp_amocrm_pages
 from gamification import bp_gamification
 from webhooks import bp_webhooks
 from shop import bp_shop
+from feed import bp_feed
 
 
 def create_app():
@@ -41,10 +42,10 @@ def create_app():
     def load_user(user_id):
         return db.session.get(User, int(user_id))
 
-    # --- Регистрация Blueprint'ов ---
     app.register_blueprint(bp_gamification)
     app.register_blueprint(bp_webhooks)
     app.register_blueprint(bp_shop)
+    app.register_blueprint(bp_feed)
     app.register_blueprint(bp_amocrm_company_api)
     app.register_blueprint(bp_amocrm_pages)
 
@@ -174,6 +175,20 @@ def create_app():
                 return redirect(url_for('register'))
 
         return render_template('auth/register.html')
+
+    @app.route('/feed')
+    @login_required
+    def feed_page():
+        return render_template('feed.html')
+
+    @app.route('/user/<int:user_id>')
+    @login_required
+    def user_profile(user_id):
+        u = db.session.get(User, user_id)
+        if not u or u.company_id != current_user.company_id: abort(404)
+        stat = db.session.execute(select(AmoCRMUserDailyStat).where(and_(AmoCRMUserDailyStat.user_id == user_id,
+                                                                         AmoCRMUserDailyStat.date == date.today()))).scalar_one_or_none()
+        return render_template('user_profile.html', target_user=u, stats=stat)
 
     @app.route('/logout')
     def logout():

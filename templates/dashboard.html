@@ -350,6 +350,79 @@
     </div>
   </div>
 
+  <div class="mt-12">
+      <style>
+          .f-card { background: var(--sj-card); border: 1px solid var(--sj-border); border-radius: 24px; margin-bottom: 20px; overflow: hidden; transition: border-color 0.2s; }
+          .f-card:hover { border-color: rgba(124, 58, 237, 0.3); }
+          .f-card.record { border-color: rgba(34, 211, 238, 0.4); background: linear-gradient(145deg, rgba(34, 211, 238, 0.05), transparent); }
+          .post-img { width: 100%; max-height: 400px; object-fit: cover; border-bottom: 1px solid var(--sj-border); }
+          .comment-box { background: rgba(0,0,0,0.2); border-top: 1px solid var(--sj-border); padding: 15px; }
+      </style>
+
+      <h2 class="text-xl font-bold text-white mb-6 flex items-center gap-2">
+         <i class="fa-solid fa-newspaper text-cyan-400"></i> Новости и достижения
+      </h2>
+
+      <div class="max-w-2xl mx-auto space-y-4">
+          <template x-for="item in feedItems" :key="item.id">
+              <div :class="item.type === 'system' ? 'f-card record p-5' : 'f-card'">
+                  <template x-if="item.type === 'system'">
+                      <div class="flex items-center gap-4">
+                          <div class="w-12 h-12 rounded-full bg-cyan-500/20 flex items-center justify-center text-cyan-400">
+                              <i class="fa-solid fa-fire-flame-curved"></i>
+                          </div>
+                          <div class="flex-1">
+                              <p class="font-bold text-sm leading-tight text-white/90" x-text="item.message"></p>
+                              <span class="text-[10px] text-[color:var(--sj-muted)] uppercase font-bold" x-text="formatDate(item.created_at)"></span>
+                          </div>
+                      </div>
+                  </template>
+
+                  <template x-if="item.type === 'post'">
+                      <div>
+                          <div class="p-5 flex items-center gap-3">
+                              <div class="w-10 h-10 rounded-xl bg-violet-600 grid place-items-center font-bold text-black" x-text="item.author[0].toUpperCase()"></div>
+                              <div>
+                                  <div class="font-bold text-sm text-white" x-text="item.author"></div>
+                                  <div class="text-[10px] text-[color:var(--sj-muted)]" x-text="formatDate(item.created_at)"></div>
+                              </div>
+                          </div>
+                          <div class="px-5 pb-4 text-sm text-white/80 leading-relaxed" x-text="item.content"></div>
+                          <template x-if="item.image_url">
+                              <img :src="item.image_url" class="post-img">
+                          </template>
+
+                          <div class="px-5 py-3 flex items-center gap-4 border-t border-white/5">
+                              <button @click="likePost(item)" class="flex items-center gap-1 text-sm font-bold transition-colors" :class="item.is_liked ? 'text-rose-500' : 'text-[color:var(--sj-muted)] hover:text-white'">
+                                  <i :class="item.is_liked ? 'fa-solid fa-heart' : 'fa-regular fa-heart'"></i>
+                                  <span x-text="item.likes_count"></span>
+                              </button>
+                              <button @click="item.open = !item.open" class="text-[color:var(--sj-muted)] hover:text-white text-sm font-bold">
+                                  <i class="fa-regular fa-comment"></i> <span x-text="item.comments.length"></span>
+                              </button>
+                          </div>
+
+                          <div x-show="item.open" x-transition class="comment-box">
+                              <template x-for="c in item.comments">
+                                  <div class="text-xs mb-2 pb-2 border-b border-white/5 last:border-0">
+                                      <b class="text-violet-400" x-text="c.username"></b>: <span class="text-white/70" x-text="c.text"></span>
+                                  </div>
+                              </template>
+                              <div class="flex gap-2 mt-3">
+                                  <input x-model="item.tempComm" @keyup.enter="sendComment(item)" class="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-violet-500/50" placeholder="Ваш ответ...">
+                              </div>
+                          </div>
+                      </div>
+                  </template>
+              </div>
+          </template>
+
+          <div x-show="feedItems.length === 0" class="text-center py-10 text-[color:var(--sj-muted)] italic">
+              В ленте пока пусто. Будь первым, кто установит рекорд сегодня!
+          </div>
+      </div>
+  </div>
+
 </div>
 {% endblock %}
 
@@ -380,10 +453,48 @@
 
       initDashboard() {
         this.fetchStatus();
+        this.loadFeed(); // Загрузка ленты
         if (this.amoLinked) {
             this.syncAmoStats();
         }
+
+        // Слушаем обновления через сокеты
+        const s = io();
+        s.on('new_feed_item', () => {
+             this.loadFeed();
+        });
       },
+
+      // --- Лента ---
+      feedItems: [],
+      async loadFeed() {
+          try {
+              const r = await fetch('/api/feed/list');
+              const data = await r.json();
+              this.items = data; // Сохраняем оригинал для отладки
+              this.feedItems = data.map(x => ({...x, open: false, tempComm: ''}));
+          } catch(e) { console.error("Feed error", e); }
+      },
+
+      async likePost(i) {
+          const r = await fetch(`/api/feed/post/${i.id}/like`, {method: 'POST'});
+          const d = await r.json();
+          i.is_liked = d.status === 'liked';
+          i.likes_count += (i.is_liked ? 1 : -1);
+      },
+
+      async sendComment(i) {
+          if(!i.tempComm) return;
+          const r = await fetch(`/api/feed/post/${i.id}/comment`, {
+              method: 'POST', headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({text: i.tempComm})
+          });
+          const d = await r.json();
+          i.comments.push({username: d.username, text: i.tempComm});
+          i.tempComm = '';
+      },
+
+      formatDate(s) { return new Date(s).toLocaleString('ru-RU', {hour:'2-digit', minute:'2-digit', day:'numeric', month:'short'}); },
 
       forceRefresh() {
           this.fetchStatus();

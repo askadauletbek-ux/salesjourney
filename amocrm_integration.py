@@ -36,8 +36,7 @@ except ImportError:
 
 from extensions import db
 # Обновлен список импортируемых моделей
-from models import Company, AmoCRMConnection, AmoCRMUserMap, PartnerUser, User, Challenge, ChallengeProgress, ChallengeGoalType, ChallengeMode, UserRole, AmoCRMUserDailyStat
-# --- Blueprints ---
+from models import Company, AmoCRMConnection, AmoCRMUserMap, PartnerUser, User, Challenge, ChallengeProgress, ChallengeGoalType, ChallengeMode, UserRole, AmoCRMUserDailyStat, FeedEvent# --- Blueprints ---
 bp_amocrm_company_api = Blueprint("amocrm_company_api", __name__, url_prefix="/api/partners/company")
 bp_amocrm_pages = Blueprint("amocrm_pages", __name__, url_prefix="/partner/company")
 
@@ -823,7 +822,26 @@ def sync_my_daily_stats():
         stat_entry.leads_won = leads_won
         stat_entry.leads_lost = leads_lost
 
+        # --- Проверка рекордов компании для Ленты ---
+        try:
+            # Рекорд по конверсии за сегодня в компании
+            max_c = db.session.query(db.func.max(AmoCRMUserDailyStat.leads_won * 100.0 / db.func.nullif(
+                AmoCRMUserDailyStat.leads_won + AmoCRMUserDailyStat.leads_lost, 0))) \
+                        .join(User).filter(
+                and_(User.company_id == user.company_id, AmoCRMUserDailyStat.date == today_date,
+                     User.id != user.id)).scalar() or 0
+
+            if stat_entry.conversion > max_c and stat_entry.conversion > 0:
+                db.session.add(FeedEvent(
+                    company_id=user.company_id, user_id=user.id, event_type="RECORD_CONV",
+                    message=f"🚀 @{user.username} установил рекорд конверсии сегодня: {stat_entry.conversion}%!"
+                ))
+        except:
+            pass
+
         db.session.commit()
+        from extensions import socketio
+        socketio.emit('new_feed_item', {'cid': user.company_id}, room=f"company_{user.company_id}")
 
         return jsonify({
             "linked": True,

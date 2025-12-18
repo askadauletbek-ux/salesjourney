@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    .feed-container { max-width: 700px; margin: 0 auto; }
+    .f-card { background: var(--sj-card); border: 1px solid var(--sj-border); border-radius: 24px; margin-bottom: 20px; overflow: hidden; }
+    .f-card.record { border-color: rgba(34, 211, 238, 0.4); background: linear-gradient(145deg, rgba(34, 211, 238, 0.05), transparent); }
+    .post-img { width: 100%; max-height: 450px; object-fit: cover; border-bottom: 1px solid var(--sj-border); }
+    .comment-box { background: rgba(0,0,0,0.2); border-top: 1px solid var(--sj-border); padding: 15px; }
+</style>
+
+<div class="feed-container" x-data="feedApp()">
+    {% if current_user.role.value in ['PARTNER', 'COMPANY_OWNER'] %}
+    <div class="f-card p-6">
+        <textarea x-model="postText" class="w-full bg-white/5 border border-[color:var(--sj-border)] rounded-xl p-3 text-sm focus:outline-none focus:border-[color:var(--sj-primary)]" placeholder="Напишите что-нибудь команде..."></textarea>
+        <div class="flex items-center justify-between mt-3">
+            <input type="file" @change="file = $event.target.files[0]" class="text-xs text-[color:var(--sj-muted)]">
+            <button @click="sendPost()" class="px-4 py-2 bg-[color:var(--sj-primary)] rounded-xl text-xs font-bold">Опубликовать</button>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="space-y-4">
+        <template x-for="item in items" :key="item.id">
+            <div :class="item.type === 'system' ? 'f-card record p-5' : 'f-card'">
+                <template x-if="item.type === 'system'">
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-full bg-cyan-500/20 flex items-center justify-center text-cyan-400"><i class="fa-solid fa-trophy"></i></div>
+                        <div>
+                            <p class="font-bold text-sm" x-text="item.message"></p>
+                            <span class="text-[10px] text-[color:var(--sj-muted)]" x-text="formatDate(item.created_at)"></span>
+                        </div>
+                    </div>
+                </template>
+
+                <template x-if="item.type === 'post'">
+                    <div>
+                        <div class="p-5 flex items-center gap-3">
+                            <a :href="'/user/'+item.author_id" class="w-10 h-10 rounded-xl bg-violet-600 grid place-items-center font-bold" x-text="item.author[0].toUpperCase()"></a>
+                            <div>
+                                <a :href="'/user/'+item.author_id" class="font-bold text-sm hover:underline" x-text="item.author"></a>
+                                <div class="text-[10px] text-[color:var(--sj-muted)]" x-text="formatDate(item.created_at)"></div>
+                            </div>
+                        </div>
+                        <div class="px-5 pb-4 text-sm" x-text="item.content"></div>
+                        <template x-if="item.image_url"><img :src="item.image_url" class="post-img"></template>
+
+                        <div class="px-5 py-3 flex items-center gap-4">
+                            <button @click="like(item)" class="flex items-center gap-1 text-sm transition-colors" :class="item.is_liked ? 'text-rose-500' : 'text-[color:var(--sj-muted)]'">
+                                <i :class="item.is_liked ? 'fa-solid fa-heart' : 'fa-regular fa-heart'"></i>
+                                <span x-text="item.likes_count"></span>
+                            </button>
+                            <button @click="item.open = !item.open" class="text-[color:var(--sj-muted)] text-sm"><i class="fa-regular fa-comment"></i> <span x-text="item.comments.length"></span></button>
+                        </div>
+
+                        <div x-show="item.open" class="comment-box">
+                            <template x-for="c in item.comments">
+                                <div class="text-xs mb-2"><b class="text-violet-400" x-text="c.username"></b>: <span x-text="c.text"></span></div>
+                            </template>
+                            <div class="flex gap-2 mt-3">
+                                <input x-model="item.tempComm" @keyup.enter="addComm(item)" class="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-1 text-xs focus:outline-none" placeholder="Ваш комментарий...">
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </template>
+    </div>
+</div>
+
+<script>
+function feedApp() {
+    return {
+        items: [], postText: '', file: null,
+        init() {
+            this.load();
+            const s = io();
+            s.on('new_feed_item', () => this.load());
+        },
+        async load() {
+            const r = await fetch('/api/feed/list');
+            this.items = (await r.json()).map(x => ({...x, open: false, tempComm: ''}));
+        },
+        async sendPost() {
+            const fd = new FormData();
+            fd.append('content', this.postText);
+            if(this.file) fd.append('image', this.file);
+            await fetch('/api/feed/post/create', {method: 'POST', body: fd});
+            this.postText = ''; this.file = null; this.load();
+        },
+        async like(i) {
+            const r = await fetch(`/api/feed/post/${i.id}/like`, {method: 'POST'});
+            const d = await r.json();
+            i.is_liked = d.status === 'liked';
+            i.likes_count += (i.is_liked ? 1 : -1);
+        },
+        async addComm(i) {
+            const r = await fetch(`/api/feed/post/${i.id}/comment`, {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({text: i.tempComm})
+            });
+            const d = await r.json();
+            i.comments.push({username: d.username, text: i.tempComm});
+            i.tempComm = '';
+        },
+        formatDate(s) { return new Date(s).toLocaleString(); }
+    }
+}
+</script>
+{% endblock %}

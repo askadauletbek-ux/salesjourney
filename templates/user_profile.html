@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    .p-card { background: var(--sj-card); border: 1px solid var(--sj-border); border-radius: 32px; padding: 40px; }
+    .stat-pill { background: rgba(255,255,255,0.03); border: 1px solid var(--sj-border); border-radius: 20px; padding: 15px; text-align: center; }
+</style>
+
+<div class="max-w-4xl mx-auto py-10">
+    <div class="p-card flex flex-col md:flex-row items-center gap-10">
+        <div class="w-32 h-32 rounded-3xl bg-gradient-to-br from-violet-600 to-cyan-500 flex items-center justify-center text-5xl font-black text-black shadow-2xl">
+            {{ target_user.username[0].toUpperCase() }}
+        </div>
+        <div class="flex-1 text-center md:text-left">
+            <h1 class="text-4xl font-black mb-1">{{ target_user.username }}</h1>
+            <p class="text-[color:var(--sj-muted)] mb-4">{{ target_user.company.name }} • {{ target_user.role.value }}</p>
+            <div class="flex flex-wrap gap-4 justify-center md:justify-start">
+                <div class="stat-pill">
+                    <div class="text-[10px] uppercase font-bold text-[color:var(--sj-muted)]">Уровень</div>
+                    <div class="text-xl font-black">{{ 1 + (target_user.gamification_profile.xp // 1000) }}</div>
+                </div>
+                <div class="stat-pill">
+                    <div class="text-[10px] uppercase font-bold text-[color:var(--sj-muted)]">Конверсия</div>
+                    <div class="text-xl font-black">{{ stats.conversion if stats else 0 }}%</div>
+                </div>
+                <div class="stat-pill">
+                    <div class="text-[10px] uppercase font-bold text-[color:var(--sj-muted)]">Звонки</div>
+                    <div class="text-xl font-black">{{ stats.calls_count if stats else 0 }}</div>
+                </div>
+            </div>
+        </div>
+        <button onclick="alert('Чат в разработке')" class="px-8 py-3 bg-white/10 rounded-2xl font-bold hover:bg-white/20 transition-all border border-white/10">Связаться</button>
+    </div>
+</div>
+{% endblock %}

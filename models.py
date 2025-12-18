@@ -74,6 +74,11 @@ class User(db.Model, UserMixin):
     challenge_progress: Mapped[List["ChallengeProgress"]] = relationship(back_populates="user",
                                                                          cascade="all, delete-orphan")
 
+    # Лента и соц. взаимодействие
+    posts: Mapped[List["Post"]] = relationship(back_populates="author", cascade="all, delete-orphan")
+    comments: Mapped[List["Comment"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    likes: Mapped[List["Like"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+
     def __repr__(self):
         return f"<User {self.email}>"
 
@@ -245,15 +250,52 @@ class UserInventory(db.Model):
     item: Mapped["ShopItem"] = relationship()
 
 
+class Post(db.Model):
+    __tablename__ = 'posts'
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey('companies.id'), nullable=False)
+    author_id: Mapped[int] = mapped_column(ForeignKey('users.id'), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    author: Mapped["User"] = relationship(back_populates="posts")
+    company: Mapped["Company"] = relationship()
+    comments: Mapped[List["Comment"]] = relationship(back_populates="post", cascade="all, delete-orphan")
+    likes: Mapped[List["Like"]] = relationship(back_populates="post", cascade="all, delete-orphan")
+
+class Comment(db.Model):
+    __tablename__ = 'comments'
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    post_id: Mapped[int] = mapped_column(ForeignKey('posts.id'), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id'), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    post: Mapped["Post"] = relationship(back_populates="comments")
+    user: Mapped["User"] = relationship(back_populates="comments")
+
+class Like(db.Model):
+    __tablename__ = 'likes'
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    post_id: Mapped[int] = mapped_column(ForeignKey('posts.id'), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id'), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    post: Mapped["Post"] = relationship(back_populates="likes")
+    user: Mapped["User"] = relationship(back_populates="likes")
+
 class FeedEvent(db.Model):
     __tablename__ = 'feed_events'
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey('companies.id'), nullable=False) # Добавлено
     user_id: Mapped[int] = mapped_column(ForeignKey('users.id'), nullable=False)
     event_type: Mapped[str] = mapped_column(String(50), nullable=False)
     message: Mapped[str] = mapped_column(String(255), nullable=False)
     meta_data: Mapped[dict] = mapped_column(db.JSON, nullable=True, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     user: Mapped["User"] = relationship()
+    company: Mapped["Company"] = relationship() # Связь для фильтрации по компании
 
 
 class AmoCRMUserDailyStat(db.Model):

@@ -18,3 +18,45 @@ body {
 .btn {
     transition: all 0.3s ease;
 }
+
+/* Стили Ленты событий */
+.feed-card {
+    background: var(--sj-card);
+    border: 1px solid var(--sj-border);
+    border-radius: 24px;
+    box-shadow: var(--sj-shadow);
+    transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.feed-card:hover {
+    border-color: rgba(124, 58, 237, 0.4);
+}
+
+/* Золотая подсветка для рекордов конверсии */
+.record-gold {
+    border-color: rgba(251, 191, 36, 0.4) !important;
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.08) 0%, transparent 100%);
+}
+
+/* Синяя подсветка для рекордов активности */
+.record-blue {
+    border-color: rgba(34, 211, 238, 0.4) !important;
+    background: linear-gradient(135deg, rgba(34, 211, 238, 0.08) 0%, transparent 100%);
+}
+
+.comment-input {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--sj-border);
+    border-radius: 16px;
+    transition: all 0.2s;
+}
+
+.comment-input:focus {
+    border-color: var(--sj-primary);
+    background: rgba(255, 255, 255, 0.06);
+    outline: none;
+}
+
+.avatar-glow {
+    box-shadow: 0 0 15px rgba(124, 58, 237, 0.3);
+}

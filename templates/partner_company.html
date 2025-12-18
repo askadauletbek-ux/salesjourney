@@ -118,6 +118,11 @@
               class="px-4 py-2 rounded-2xl border border-[color:var(--sj-border)] font-semibold transition-colors">
         <i class="fa-solid fa-store mr-2 text-white/60"></i>Магазин
       </button>
+      <button @click="tab='feed'"
+              :class="tab==='feed' ? 'bg-white/10' : 'bg-white/5 hover:bg-white/10'"
+              class="px-4 py-2 rounded-2xl border border-[color:var(--sj-border)] font-semibold transition-colors">
+        <i class="fa-solid fa-bullhorn mr-2 text-white/60"></i>Лента
+      </button>
       <button @click="tab='settings'"
               :class="tab==='settings' ? 'bg-white/10' : 'bg-white/5 hover:bg-white/10'"
               class="px-4 py-2 rounded-2xl border border-[color:var(--sj-border)] font-semibold transition-colors">
@@ -306,6 +311,82 @@
             {% endif %}
         </div>
     </div>
+  </div>
+
+  <div x-show="tab==='feed'" x-data="feedAdmin()">
+    <style>
+      .admin-f-card { background: rgba(255,255,255,0.03); border: 1px solid var(--sj-border); border-radius: 20px; padding: 20px; margin-bottom: 15px; }
+      .p-input { background: rgba(0,0,0,0.2); border: 1px solid var(--sj-border); border-radius: 12px; padding: 12px; width: 100%; color: white; outline: none; transition: border-color 0.2s; }
+      .p-input:focus { border-color: var(--sj-primary); }
+    </style>
+
+    <div class="grid lg:grid-cols-2 gap-6">
+      <div>
+        <h3 class="font-bold text-lg mb-4 text-white">Новая публикация</h3>
+        <div class="admin-f-card">
+          <textarea x-model="postText" class="p-input text-sm mb-3" rows="4" placeholder="Текст сообщения для всех сотрудников..."></textarea>
+
+          <div class="flex items-center justify-between">
+            <label class="flex items-center gap-2 cursor-pointer text-[color:var(--sj-muted)] hover:text-white transition-colors">
+              <i class="fa-solid fa-camera"></i>
+              <span class="text-xs font-bold">Добавить фото</span>
+              <input type="file" @change="file = $event.target.files[0]" class="hidden">
+            </label>
+            <span x-show="file" class="text-[10px] text-emerald-400 font-bold" x-text="file.name"></span>
+          </div>
+
+          <button @click="sendPost()" class="w-full mt-4 py-3 rounded-xl bg-[color:var(--sj-primary)] text-white font-bold hover:opacity-90 transition-all">
+            Опубликовать в ленте
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <h3 class="font-bold text-lg mb-4 text-white">Последние события</h3>
+        <div class="max-h-[500px] overflow-y-auto pr-2 space-y-3">
+          <template x-for="item in feedItems" :key="item.id">
+            <div class="p-4 rounded-xl border border-white/5 bg-white/5 flex gap-3">
+              <div class="w-8 h-8 rounded bg-white/10 flex-shrink-0 grid place-items-center">
+                <i :class="item.type === 'system' ? 'fa-solid fa-robot text-cyan-400' : 'fa-solid fa-user text-violet-400'"></i>
+              </div>
+              <div class="min-w-0">
+                <div class="text-[11px] font-bold text-white/40 mb-1" x-text="formatDate(item.created_at)"></div>
+                <div class="text-xs text-white/80 line-clamp-3" x-text="item.content || item.message"></div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      function feedAdmin() {
+        return {
+          feedItems: [], postText: '', file: null,
+          init() {
+            this.load();
+          },
+          async load() {
+            const r = await fetch('/api/feed/list');
+            this.feedItems = await r.json();
+          },
+          async sendPost() {
+            if(!this.postText) return;
+            const fd = new FormData();
+            fd.append('content', this.postText);
+            if(this.file) fd.append('image', this.file);
+
+            const r = await fetch('/api/feed/post/create', { method: 'POST', body: fd });
+            if(r.ok) {
+              this.postText = ''; this.file = null;
+              this.load();
+              Alpine.store('toasts').push({title:'Успех', text:'Пост опубликован', tone:'ok'});
+            }
+          },
+          formatDate(s) { return new Date(s).toLocaleString(); }
+        }
+      }
+    </script>
   </div>
 
   <div x-show="tab==='settings'">
