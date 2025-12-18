@@ -224,8 +224,14 @@ def create_app():
 
         if not daily_stat:
             # Пустышка для корректного отображения
-            daily_stat = AmoCRMUserDailyStat(calls_count=0, talk_seconds=0, leads_created=0, leads_won=0,
-                                             updated_at=None)
+            daily_stat = AmoCRMUserDailyStat(
+                calls_count=0,
+                talk_seconds=0,
+                leads_created=0,
+                leads_won=0,
+                leads_lost=0,  # <--- ДОБАВЛЕНО ЭТО ПОЛЕ
+                updated_at=None
+            )
 
         return render_template('dashboard.html',
                                user=current_user,
