@@ -36,7 +36,7 @@ except ImportError:
 
 from extensions import db
 # Обновлен список импортируемых моделей
-from models import Company, AmoCRMConnection, AmoCRMUserMap, PartnerUser, User, Challenge, ChallengeProgress, ChallengeGoalType, ChallengeMode, UserRole, AmoCRMUserDailyStat, FeedEvent, DailyStory# --- Blueprints ---
+from models import Company, AmoCRMConnection, AmoCRMUserMap, PartnerUser, User, Challenge, ChallengeProgress, ChallengeGoalType, ChallengeMode, UserRole, AmoCRMUserDailyStat, FeedEvent, DailyStory, GamificationProfile, Transaction
 bp_amocrm_company_api = Blueprint("amocrm_company_api", __name__, url_prefix="/api/partners/company")
 bp_amocrm_pages = Blueprint("amocrm_pages", __name__, url_prefix="/partner/company")
 
@@ -1134,22 +1134,55 @@ def debug_inspect_entity(company_id: int):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-def process_daily_achievements():
-    """Функция для подведения итогов дня (запускать в 23:59 или 00:00)"""
-    yesterday = datetime.date.today()
-    companies = Company.query.all()
-    for comp in companies:
-        # Находим лидера дня по конверсии
-        leader = db.session.query(AmoCRMUserDailyStat).join(User).filter(
-            User.company_id == comp.id,
-            AmoCRMUserDailyStat.date == yesterday
-        ).order_by((AmoCRMUserDailyStat.leads_won * 100.0 / db.func.nullif(AmoCRMUserDailyStat.leads_won + AmoCRMUserDailyStat.leads_lost, 0)).desc()).first()
 
-        if leader and leader.conversion > 0:
-            db.session.add(FeedEvent(
-                company_id=comp.id, user_id=leader.user_id, event_type="DAILY_SUMMARY",
-                message=f"🏆 Итоги дня: @{leader.user.username} показал лучшую конверсию {leader.conversion}%!"
-            ))
+def run_nightly_reward_calculation():
+    """Рассчитывает награду за вчерашний день в 00:01."""
+    yesterday = datetime.date.today() - datetime.timedelta(days=1)
+    stats = AmoCRMUserDailyStat.query.filter_by(date=yesterday).all()
+
+    for s in stats:
+        user = s.user
+        profile = user.gamification_profile
+        if not profile: continue
+
+        # Пример логики: 10 за звонок, 50 за минуту, 500 за продажу.
+        # Если конверсия > 20%, даем бонус +30%.
+        base_coins = (s.calls_count * 10) + (int(s.minutes_talked) * 50) + (s.leads_won * 500)
+        if s.conversion > 20:
+            base_coins = int(base_coins * 1.3)
+
+        xp_reward = int(base_coins * 0.1) + 150
+
+        profile.last_reward_data = {
+            "date": yesterday.isoformat(),
+            "coins": base_coins,
+            "xp": xp_reward,
+            "calls": s.calls_count,
+            "mins": s.minutes_talked,
+            "conv": s.conversion,
+            "won": s.leads_won
+        }
+        profile.show_reward_modal = False  # Активируется в 8 утра
+
+    db.session.commit()
+
+
+def issue_daily_rewards():
+    """Выдает рассчитанные коины в 08:00."""
+    profiles = GamificationProfile.query.filter(GamificationProfile.last_reward_data != None).all()
+
+    for p in profiles:
+        data = p.last_reward_data
+        p.coins += data['coins']
+        p.xp += data['xp']
+        p.show_reward_modal = True  # Разрешаем показ окна
+
+        db.session.add(Transaction(
+            user_id=p.user_id,
+            amount=data['coins'],
+            reason=f"Итоги дня {data['date']}"
+        ))
+
     db.session.commit()
 
 @bp_amocrm_company_api.route("/<int:company_id>/members")

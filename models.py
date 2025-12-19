@@ -163,6 +163,11 @@ class GamificationProfile(db.Model):
     xp: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     current_streak: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     last_activity_date: Mapped[date] = mapped_column(Date, nullable=True)
+
+    # Поля для отложенного начисления
+    last_reward_data: Mapped[Optional[dict]] = mapped_column(db.JSON, nullable=True)
+    show_reward_modal: Mapped[bool] = mapped_column(Boolean, default=False)
+
     user: Mapped["User"] = relationship(back_populates="gamification_profile")
 
 

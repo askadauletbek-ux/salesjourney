@@ -151,54 +151,16 @@ def handle_amo_events():
 
 def _process_won_deal_reward(user: User, budget: float, lead_id: str):
     """
-    Начисление за успешную сделку с учетом Баффов и Стрика.
+    Только обновление активности и прогресса челленджей. Коины будут начислены ночью.
     """
     profile = get_or_create_profile(user)
-
-    # 1. Обновляем активность и стрик (CD8 - Avoidance)
-    # Важно вызвать ДО расчета, так как стрик может повлиять на бонус
     check_streak(profile)
 
-    # 2. Получаем сегодняшний бафф (CD3 - Choice)
-    today = date.today()
-    buff_entry = db.session.execute(
-        select(DailyBuff).where(
-            and_(DailyBuff.user_id == user.id, DailyBuff.date == today)
-        )
-    ).scalar_one_or_none()
-
-    buff_type = buff_entry.buff_type if buff_entry else None
-
-    # 3. Базовый расчет множителя по стратегии
-    multiplier = 1.0
-    if buff_type == BuffType.SHARK:
-        multiplier = 1.5
-    elif buff_type == BuffType.WOODPECKER:
-        multiplier = 0.5
-    # Если ZEN или нет баффа -> 1.0
-
-    # 4. Бонус за стрик (Long-term commitment)
-    if profile.current_streak > 3:
-        multiplier *= 1.05  # +5%
-
-    final_amount = int(budget * multiplier)
-
-    # 5. Сохранение
-    profile.coins += final_amount
-    profile.xp += int(final_amount * 0.1)  # XP даем 10% от суммы коинов (пример)
-
-    txn = Transaction(
-        user_id=user.id,
-        amount=final_amount,
-        reason=f"Сделка #{lead_id} (Бюджет: {budget}, Бафф: {buff_type.value if buff_type else 'None'}, Стрик: {profile.current_streak})"
-    )
-    db.session.add(txn)
-
-    # --- Challenge Logic ---
+    # Обновляем прогресс челленджей в реальном времени
     _update_challenge_progress(user, ChallengeGoalType.SALES_VOLUME, int(budget))
     _update_challenge_progress(user, ChallengeGoalType.SALES_COUNT, 1)
 
-    current_app.logger.info(f"Rewarded User {user.id}: +{final_amount} coins for Deal {lead_id}")
+    current_app.logger.info(f"Deal {lead_id} recorded for challenges. Daily rewards will be issued at 08:00.")
 
 def _process_call_reward(user: User, duration: int, source_link: str):
     """

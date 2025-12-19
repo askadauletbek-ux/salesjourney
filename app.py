@@ -32,10 +32,19 @@ def create_app():
 
     ADMIN_PATH = os.getenv("ADMIN_PATH", "admin")
 
+    from apscheduler.schedulers.background import BackgroundScheduler
+    from amocrm_integration import run_nightly_reward_calculation, issue_daily_rewards
+
     # --- Инициализация расширений ---
     db.init_app(app)
     login_manager.init_app(app)
-    socketio.init_app(app)  # <--- ДОБАВИТЬ ЭТУ СТРОКУ ОБЯЗАТЕЛЬНО
+    socketio.init_app(app)
+
+    # Планировщик задач
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(func=run_nightly_reward_calculation, trigger="cron", hour=0, minute=1)
+    scheduler.add_job(func=issue_daily_rewards, trigger="cron", hour=8, minute=0)
+    scheduler.start()
 
     login_manager.login_view = 'login'
 
@@ -251,10 +260,29 @@ def create_app():
                 updated_at=None
             )
 
+            # Проверка наличия награды для окна поздравления
+            reward_info = None
+            suggested_items = []
+
+        if current_user.gamification_profile and current_user.gamification_profile.show_reward_modal:
+                reward_info = current_user.gamification_profile.last_reward_data
+                current_user.gamification_profile.show_reward_modal = False
+                db.session.commit()
+
+                # Подбираем товары из магазина, на которые теперь хватает коинов
+                suggested_items = ShopItem.query.filter(
+                    and_(
+                        or_(ShopItem.company_id == current_user.company_id, ShopItem.company_id.is_(None)),
+                        ShopItem.price <= current_user.gamification_profile.coins
+                    )
+                ).order_by(ShopItem.price.desc()).limit(3).all()
+
         return render_template('dashboard.html',
-                               user=current_user,
-                               amo_stat=daily_stat,
-                               is_amo_linked=is_amo_linked)
+                                   user=current_user,
+                                   amo_stat=daily_stat,
+                                   is_amo_linked=is_amo_linked,
+                                   daily_reward=reward_info,
+                                   suggestions=suggested_items)
 
     # ==========================
     # PARTNER ROUTES
