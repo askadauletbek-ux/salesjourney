@@ -193,6 +193,8 @@ function tvDashboard(companyId){
       this.map = m.map || {};
     },
 
+
+
     async loadPeople(){
       const p = await jget(`/api/partners/company/${this.companyId}/members?page=1&per_page=500`);
       this.people = p.members || p.items || [];

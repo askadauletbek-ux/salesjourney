@@ -5,7 +5,8 @@ from typing import Dict, Any, List
 
 from flask import Blueprint, jsonify, request, current_app, render_template, flash, redirect, url_for, abort
 from flask_login import login_required, current_user
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, and_
+from datetime import datetime # Обязательно добавить импорт!
 
 from extensions import db, socketio
 from models import ShopItem, UserInventory, Transaction, ShopItemType, User, FeedEvent, UserRole, Company
@@ -192,17 +193,25 @@ def buy_item():
             inventory_item = UserInventory(
                 user_id=user.id,
                 item_id=item.id,
-                is_used=False  # Реальный товар пока не использован, его нужно "предъявить"
+                is_used=False
             )
             db.session.add(inventory_item)
+            db.session.flush()  # Принудительно получаем ID и даты из БД до коммита
 
-            # Уведомляем админа о покупке реального товара (чтобы он его выдал)
+            # Уведомляем партнера о покупке реального товара
             if item.type == ShopItemType.REAL:
-                socketio.emit('admin_notification', {
-                    'title': 'Покупка в магазине',
-                    'body': f"{user.username} купил: {item.name}. Нужно выдать!",
-                    'user_id': user.id
-                }, to='admins')
+                db.session.flush()
+                # ФИКС: Убеждаемся, что время есть, прежде чем делать strftime
+                p_time = inventory_item.purchased_at
+                if p_time is None:
+                    p_time = datetime.utcnow()  # Используем UTC для консистентности
+
+                socketio.emit('partner_new_purchase', {
+                    'inventory_id': inventory_item.id,
+                    'username': user.username,
+                    'item_name': item.name,
+                    'time': p_time.strftime('%H:%M')
+                }, room=f"company_{user.company_id}_partners")
 
         db.session.commit()
         return jsonify(response_data)
@@ -253,6 +262,74 @@ def create_item():
     flash(f'Товар "{name}" добавлен в магазин!', 'success')
     return redirect(url_for('partner_company', company_id=company_id))
 
+
+@bp_shop.route('/partner/pending-purchases/<int:company_id>', methods=['GET'])
+@login_required
+def get_pending_purchases(company_id):
+    """Список всех невыданных реальных товаров компании"""
+    if current_user.role not in [UserRole.PARTNER, UserRole.COMPANY_OWNER]:
+        abort(403)
+
+    # Находим все записи инвентаря для сотрудников этой компании, где товар REAL и еще не использован
+    items = db.session.execute(
+        select(UserInventory)
+        .join(User, UserInventory.user_id == User.id)
+        .join(ShopItem, UserInventory.item_id == ShopItem.id)
+        .where(
+            and_(
+                User.company_id == company_id,
+                ShopItem.type == ShopItemType.REAL,
+                UserInventory.is_used == False
+            )
+        )
+        .order_by(UserInventory.purchased_at.desc())
+    ).scalars().all()
+
+    return jsonify([{
+        "id": i.id,
+        "username": i.user.username,
+        "item_name": i.item.name,
+        "created_at": i.purchased_at.isoformat()
+    } for i in items])
+
+
+@bp_shop.route('/partner/confirm-issue/<int:inventory_id>', methods=['POST'])
+@login_required
+def confirm_issue(inventory_id):
+    """Партнер подтверждает выдачу товара"""
+    if current_user.role not in [UserRole.PARTNER, UserRole.COMPANY_OWNER]:
+        abort(403)
+
+    inv_item = db.session.get(UserInventory, inventory_id)
+    if not inv_item:
+        return jsonify({"error": "Запись не найдена"}), 404
+
+    # Безопасность: проверяем, что товар из компании этого партнера
+    if inv_item.user.company.owner_partner_id != current_user.partner_profile.id:
+        abort(403)
+
+    inv_item.is_used = True
+    db.session.commit()
+    return jsonify({"ok": True})
+
+@bp_shop.route('/partner/confirm-issue/<int:inventory_id>', methods=['POST'])
+@login_required
+def confirm_inventory_issue(inventory_id):
+    """Партнер подтверждает, что товар выдан сотруднику"""
+    if current_user.role not in [UserRole.PARTNER, UserRole.COMPANY_OWNER]:
+        abort(403)
+
+    inv_item = db.session.get(UserInventory, inventory_id)
+    if not inv_item:
+        return jsonify({"error": "Запись не найдена"}), 404
+
+    # Проверка: принадлежит ли товар компании, которой владеет этот партнер
+    if inv_item.user.company.owner_partner_id != current_user.partner_profile.id:
+        abort(403)
+
+    inv_item.is_used = True  # Помечаем как "Выдано/Использовано"
+    db.session.commit()
+    return jsonify({"ok": True})
 
 @bp_shop.route('/partner/delete/<int:item_id>', methods=['POST'])
 @login_required

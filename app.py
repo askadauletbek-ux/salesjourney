@@ -14,7 +14,7 @@ import io
 from extensions import db, login_manager
 
 # Импорт моделей
-from models import User, GamificationProfile, ShopItem, ShopItemType, UserRole, Company, PartnerUser, AmoCRMUserDailyStat, AmoCRMUserMap, DailyBuff, BuffType
+from models import User, GamificationProfile, ShopItem, ShopItemType, UserRole, Company, PartnerUser, AmoCRMUserDailyStat, AmoCRMUserMap, DailyBuff, BuffType, Achievement
 # Импорт модулей (Blueprints)
 from amocrm_integration import bp_amocrm_company_api, bp_amocrm_pages
 from gamification import bp_gamification
@@ -39,6 +39,13 @@ def create_app():
     db.init_app(app)
     login_manager.init_app(app)
     socketio.init_app(app)
+
+    @socketio.on('join_partner_room')
+    def on_join_partner(data):
+        company_id = data.get('company_id')
+        if current_user.is_authenticated and current_user.role in [UserRole.PARTNER, UserRole.COMPANY_OWNER]:
+            from flask_socketio import join_room
+            join_room(f"company_{company_id}_partners")
 
     # Планировщик задач
     scheduler = BackgroundScheduler()
@@ -249,6 +256,10 @@ def create_app():
             )
         ).scalar_one_or_none()
 
+        # Инициализируем переменные заранее, чтобы они всегда существовали
+        reward_info = None
+        suggested_items = []
+
         if not daily_stat:
             # Пустышка для корректного отображения
             daily_stat = AmoCRMUserDailyStat(
@@ -256,34 +267,179 @@ def create_app():
                 talk_seconds=0,
                 leads_created=0,
                 leads_won=0,
-                leads_lost=0,  # <--- ДОБАВЛЕНО ЭТО ПОЛЕ
+                leads_lost=0,
                 updated_at=None
             )
 
-            # Проверка наличия награды для окна поздравления
-            reward_info = None
-            suggested_items = []
-
+            # Данные для окна награды (если флаг активен)
         if current_user.gamification_profile and current_user.gamification_profile.show_reward_modal:
-                reward_info = current_user.gamification_profile.last_reward_data
-                current_user.gamification_profile.show_reward_modal = False
-                db.session.commit()
+            reward_info = current_user.gamification_profile.last_reward_data
+            current_user.gamification_profile.show_reward_modal = False
+            db.session.commit()
 
-                # Подбираем товары из магазина, на которые теперь хватает коинов
-                suggested_items = ShopItem.query.filter(
-                    and_(
-                        or_(ShopItem.company_id == current_user.company_id, ShopItem.company_id.is_(None)),
-                        ShopItem.price <= current_user.gamification_profile.coins
-                    )
-                ).order_by(ShopItem.price.desc()).limit(3).all()
+            items_from_db = ShopItem.query.filter(
+                and_(
+                     or_(ShopItem.company_id == current_user.company_id, ShopItem.company_id.is_(None)),
+                    ShopItem.price <= current_user.gamification_profile.coins
+                )
+            ).order_by(ShopItem.price.desc()).limit(3).all()
+            suggested_items = [{"id": item.id, "name": item.name, "price": item.price} for item in items_from_db]
+
+            # Проверка нового достижения для отдельной модалки
+        all_achievements = Achievement.query.all()
+        earned_ids = [ua.achievement_id for ua in current_user.achievements]
+        achievement_earned = None
+        if current_user.gamification_profile and current_user.gamification_profile.pending_achievement_id:
+            achievement_earned = db.session.get(Achievement,
+                                                    current_user.gamification_profile.pending_achievement_id)
+            current_user.gamification_profile.pending_achievement_id = None
+            db.session.commit()
 
         return render_template('dashboard.html',
                                    user=current_user,
                                    amo_stat=daily_stat,
                                    is_amo_linked=is_amo_linked,
                                    daily_reward=reward_info,
-                                   suggestions=suggested_items)
+                                   suggestions=suggested_items,
+                                   achievement=achievement_earned,
+                                   all_achievements=all_achievements,
+                                   earned_ids=earned_ids)
 
+    @app.route('/admin/seed-achievements')
+    @login_required
+    def seed_achievements():
+            # Проверка на права супер-админа (безопасность)
+            if current_user.role != UserRole.SUPER_ADMIN:
+                abort(403)
+
+            # Список примеров достижений
+            items = [
+                # --- Звонки ---
+                {
+                    "name": "Первый контакт",
+                    "description": "Сделайте свой первый звонок клиенту через AmoCRM",
+                    "icon_code": "fa-phone-volume",
+                    "condition_type": "calls",
+                    "condition_value": 1
+                },
+                {
+                    "name": "Телефонный марафон",
+                    "description": "Совершите 50 звонков за один рабочий день",
+                    "icon_code": "fa-headset",
+                    "condition_type": "calls",
+                    "condition_value": 50
+                },
+                {
+                    "name": "Король эфира",
+                    "description": "Невероятный результат! 100 звонков за день",
+                    "icon_code": "fa-crown",
+                    "condition_type": "calls",
+                    "condition_value": 100
+                },
+
+                # --- Время разговоров ---
+                {
+                    "name": "Слушатель",
+                    "description": "Проговорите суммарно 30 минут за день",
+                    "icon_code": "fa-comments",
+                    "condition_type": "mins",
+                    "condition_value": 30
+                },
+                {
+                    "name": "Мастер переговоров",
+                    "description": "60 минут чистого времени в разговорах с клиентами",
+                    "icon_code": "fa-microphone-lines",
+                    "condition_type": "mins",
+                    "condition_value": 60
+                },
+
+                # --- Конверсия ---
+                {
+                    "name": "Снайпер",
+                    "description": "Добейтесь конверсии из звонка в сделку не менее 15%",
+                    "icon_code": "fa-crosshairs",
+                    "condition_type": "conv",
+                    "condition_value": 15
+                },
+                {
+                    "name": "Волк с Уолл-стрит",
+                    "description": "Феноменальная конверсия в 30% за рабочий день",
+                    "icon_code": "fa-money-bill-trend-up",
+                    "condition_type": "conv",
+                    "condition_value": 30
+                }
+            ]
+
+            added_count = 0
+            for item in items:
+                # Проверяем, существует ли уже достижение с таким именем
+                exists = Achievement.query.filter_by(name=item['name']).first()
+                if not exists:
+                    new_ach = Achievement(
+                        name=item['name'],
+                        description=item['description'],
+                        icon_code=item['icon_code'],
+                        condition_type=item['condition_type'],
+                        condition_value=item['condition_value']
+                    )
+                    db.session.add(new_ach)
+                    added_count += 1
+
+            try:
+                db.session.commit()
+                flash(f"База обновлена! Добавлено достижений: {added_count}", "success")
+            except Exception as e:
+                db.session.rollback()
+                flash(f"Ошибка при сохранении: {str(e)}", "error")
+
+            return redirect(url_for('dashboard'))
+
+        # API роут вынесен из функции dashboard()
+    @app.route('/api/user/analytics')
+    @login_required
+    def get_user_analytics():
+        """Возвращает расширенную аналитику за последние 30 дней"""
+        stats_query = AmoCRMUserDailyStat.query.filter_by(user_id=current_user.id) \
+                      .order_by(AmoCRMUserDailyStat.date.asc()).limit(30).all()
+
+        if not stats_query:
+            return jsonify({"history": [], "metrics": None})
+
+        history = [{
+            "date": s.date.strftime('%d.%m'),
+            "calls": s.calls_count,
+            "mins": s.minutes_talked,
+            "conv": s.conversion,
+            "won": s.leads_won
+        } for s in reversed(stats_query)]
+
+        # Расчет показателей
+        best_day_stat = max(stats_query, key=lambda x: (x.leads_won, x.calls_count))
+        total_days = len(stats_query)
+
+        metrics = {
+            "best_day": {
+                "date": best_day_stat.date.strftime('%d %B'),
+                "won": best_day_stat.leads_won,
+                "calls": best_day_stat.calls_count
+            },
+            "averages": {
+                "calls": round(sum(s.calls_count for s in stats_query) / total_days, 1),
+                "won": round(sum(s.leads_won for s in stats_query) / total_days, 1),
+                "conv": round(sum(s.conversion for s in stats_query) / total_days, 1)
+            },
+            "totals": {
+                "calls": sum(s.calls_count for s in stats_query),
+                "won": sum(s.leads_won for s in stats_query)
+            },
+            "charts": {
+                "labels": [s.date.strftime('%d.%m') for s in stats_query],
+                "won": [s.leads_won for s in stats_query],
+                "calls": [s.calls_count for s in stats_query]
+            }
+        }
+
+        return jsonify({"history": history, "metrics": metrics})
     # ==========================
     # PARTNER ROUTES
     # ==========================

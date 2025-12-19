@@ -68,6 +68,7 @@ class User(db.Model, UserMixin):
                                                                     cascade="all, delete-orphan")
     gamification_profile: Mapped[Optional["GamificationProfile"]] = relationship(back_populates="user", uselist=False,
                                                                                  cascade="all, delete-orphan")
+    achievements: Mapped[List["UserAchievement"]] = relationship(cascade="all, delete-orphan")
 
     # Геймификация Backrefs
     buffs: Mapped[List["DailyBuff"]] = relationship(back_populates="user", cascade="all, delete-orphan")
@@ -155,6 +156,25 @@ class AmoCRMUserMap(db.Model):
     platform_user: Mapped["User"] = relationship(back_populates="amo_maps")
 
 
+class Achievement(db.Model):
+    __tablename__ = 'achievements'
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str] = mapped_column(String(255))
+    icon_code: Mapped[str] = mapped_column(String(50))  # Например: 'fa-trophy'
+    condition_type: Mapped[str] = mapped_column(String(50))  # 'calls', 'mins', 'conv'
+    condition_value: Mapped[int] = mapped_column(Integer)
+
+
+class UserAchievement(db.Model):
+    __tablename__ = 'user_achievements'
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id'))
+    achievement_id: Mapped[int] = mapped_column(ForeignKey('achievements.id'))
+    earned_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    achievement: Mapped["Achievement"] = relationship()
+
+
 class GamificationProfile(db.Model):
     __tablename__ = 'gamification_profiles'
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -167,6 +187,9 @@ class GamificationProfile(db.Model):
     # Поля для отложенного начисления
     last_reward_data: Mapped[Optional[dict]] = mapped_column(db.JSON, nullable=True)
     show_reward_modal: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Новое: ID достижения, которое нужно показать в модалке
+    pending_achievement_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="gamification_profile")
 

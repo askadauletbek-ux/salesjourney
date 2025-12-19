@@ -150,6 +150,61 @@ def _clear_tokens(company_id: int) -> None:
         db.session.commit()
 
 
+def check_and_grant_achievements(user_id, daily_stat):
+    """Проверяет условия и выдает достижения на основе дневной статистики"""
+    from models import Achievement, UserAchievement, GamificationProfile
+    achievements = Achievement.query.all()
+    profile = GamificationProfile.query.filter_by(user_id=user_id).first()
+    if not profile: return
+
+    for ach in achievements:
+        # Проверяем, нет ли уже такого достижения у юзера
+        exists = UserAchievement.query.filter_by(user_id=user_id, achievement_id=ach.id).first()
+        if exists: continue
+
+        is_earned = False
+        if ach.condition_type == 'calls' and daily_stat.calls_count >= ach.condition_value:
+            is_earned = True
+        elif ach.condition_type == 'mins' and daily_stat.minutes_talked >= ach.condition_value:
+            is_earned = True
+        elif ach.condition_type == 'conv' and daily_stat.conversion >= ach.condition_value:
+            is_earned = True
+
+        if is_earned:
+            new_grant = UserAchievement(user_id=user_id, achievement_id=ach.id)
+            db.session.add(new_grant)
+            # Записываем в профиль, чтобы показать модалку при входе
+            profile.pending_achievement_id = ach.id
+
+    db.session.commit()
+
+
+def issue_daily_rewards():
+    """Выдает рассчитанные коины в 08:00."""
+    profiles = GamificationProfile.query.filter(GamificationProfile.last_reward_data != None).all()
+
+    for p in profiles:
+        data = p.last_reward_data
+        p.coins += data['coins']
+        p.xp += data['xp']
+        p.show_reward_modal = True  # Разрешаем показ окна итогов
+
+        # Новое: Проверяем достижения на основе вчерашней статистики
+        s = AmoCRMUserDailyStat.query.filter_by(
+            user_id=p.user_id,
+            date=datetime.date.fromisoformat(data['date'])
+        ).first()
+        if s:
+            check_and_grant_achievements(p.user_id, s)
+
+        db.session.add(Transaction(
+            user_id=p.user_id,
+            amount=data['coins'],
+            reason=f"Итоги дня {data['date']}"
+        ))
+
+    db.session.commit()
+
 def _callback_url(company_id: int = None) -> str:
     """
     Генерирует глобальный Callback URL.

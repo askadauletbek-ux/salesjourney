@@ -5,7 +5,7 @@
 
 <div x-data="gameDashboard()" x-init="initDashboard()" class="relative min-h-[80vh]">
 
-  <div class="mb-8 flex items-center justify-between p-6 rounded-3xl border border-white/5 bg-white/5 backdrop-blur-md animate-fade-in">
+  <div class="mb-8 flex flex-col lg:flex-row items-center justify-between p-6 rounded-3xl border border-white/5 bg-white/5 backdrop-blur-md animate-fade-in gap-6">
       <div class="flex items-center gap-5">
           <div class="relative group cursor-pointer" @click="showProfileModal = true">
               <template x-if="userHasAvatar">
@@ -14,20 +14,36 @@
               <template x-if="!userHasAvatar">
                   <div class="w-16 h-16 rounded-2xl bg-violet-600 grid place-items-center text-2xl font-black text-black shadow-lg shadow-violet-500/20" x-text="stats.username[0].toUpperCase()"></div>
               </template>
-
               <div class="absolute inset-0 bg-black/40 rounded-2xl opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
                   <i class="fa-solid fa-camera text-white text-sm"></i>
               </div>
           </div>
           <div>
               <h2 class="text-xl font-black text-white" x-text="stats.username"></h2>
-              <p class="text-[10px] text-[color:var(--sj-muted)] font-bold uppercase tracking-[0.2em]" x-text="userRoleLabel"></p>
+              <div class="flex items-center gap-3">
+                  <p class="text-[9px] text-white/40 font-bold uppercase tracking-widest" x-text="userRoleLabel"></p>
+                  <button @click="showProfileModal = true" class="text-violet-400 hover:text-white transition-colors text-[9px] font-black uppercase">Настройки</button>
+              </div>
           </div>
       </div>
 
-      <button @click="showProfileModal = true" class="w-12 h-12 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition-all text-white/40 hover:text-white flex items-center justify-center">
-          <i class="fa-solid fa-user-pen"></i>
-      </button>
+      <div class="flex bg-black/20 p-1 rounded-2xl border border-white/5">
+          <button @click="activeTab = 'main'"
+                  :class="activeTab === 'main' ? 'bg-white/10 text-white shadow-lg' : 'text-white/40 hover:text-white'"
+                  class="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2">
+              <i class="fa-solid fa-gauge-high"></i> Обзор
+          </button>
+          <button @click="activeTab = 'achievements'"
+                  :class="activeTab === 'achievements' ? 'bg-amber-500/20 text-amber-500 border border-amber-500/20 shadow-lg shadow-amber-500/10' : 'text-white/40 hover:text-white'"
+                  class="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2">
+              <i class="fa-solid fa-medal"></i> Награды
+          </button>
+          <button @click="activeTab = 'analytics'"
+                  :class="activeTab === 'analytics' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/20 shadow-lg shadow-cyan-500/10' : 'text-white/40 hover:text-white'"
+                  class="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2">
+              <i class="fa-solid fa-chart-pie"></i> Аналитика
+          </button>
+      </div>
   </div>
 
   <div x-show="showProfileModal"
@@ -67,8 +83,8 @@
       </div>
   </div>
 
-  <div x-show="stories.length > 0" class="mb-10 flex gap-4 overflow-x-auto no-scrollbar py-2 px-1">
-      <template x-for="story in stories" :key="story.id">
+<div x-show="activeTab === 'main'" x-transition>
+      <div x-show="stories.length > 0" class="mb-10 flex gap-4 overflow-x-auto no-scrollbar py-2 px-1">      <template x-for="story in stories" :key="story.id">
     <div @click="activeStory = story" class="flex-shrink-0 flex flex-col items-center gap-2 cursor-pointer group">
         <div class="w-16 h-16 rounded-full p-1 bg-gradient-to-tr from-violet-600 via-rose-500 to-amber-500 animate-gradient-xy">
             <div class="w-full h-full rounded-full bg-[#0f121d] flex items-center justify-center border-2 border-[#0f121d] overflow-hidden">
@@ -441,7 +457,25 @@
        </div>
   </div>
 
-  <div x-show="loading"
+   {% if achievement %}
+  <div x-data="{ showAch: true }" x-show="showAch"
+       class="fixed inset-0 z-[600] flex items-center justify-center p-4 bg-black/95 backdrop-blur-xl"
+       x-transition.opacity.duration.500ms>
+      <div class="w-full max-w-sm rounded-[40px] bg-gradient-to-b from-amber-500/20 to-transparent border border-amber-500/30 p-10 text-center relative animate-bounce-in shadow-[0_0_100px_rgba(245,158,11,0.1)]">
+          <div class="w-24 h-24 rounded-3xl bg-gradient-to-br from-amber-400 to-orange-600 mx-auto mb-6 flex items-center justify-center text-5xl text-black shadow-2xl rotate-12">
+              <i class="fa-solid {{ achievement.icon_code }}"></i>
+          </div>
+          <div class="text-[10px] font-black uppercase text-amber-500 tracking-[0.3em] mb-2">Новая вершина покорена!</div>
+          <h2 class="text-3xl font-black text-white mb-2 tracking-tight">{{ achievement.name }}</h2>
+          <p class="text-white/60 text-sm mb-8 leading-relaxed">{{ achievement.description }}</p>
+          <button @click="showAch = false" class="w-full py-5 rounded-2xl bg-white text-black font-black uppercase text-[10px] tracking-[0.2em] hover:bg-amber-400 transition-all shadow-lg">
+              Продолжить
+          </button>
+      </div>
+  </div>
+  {% endif %}
+
+ <div x-show="loading"
        x-transition.opacity
        class="absolute inset-0 bg-[#070b16]/50 backdrop-blur-sm z-50 flex items-center justify-center rounded-3xl" style="display: none;">
     <div class="flex flex-col items-center">
@@ -449,8 +483,161 @@
       <span class="mt-2 text-sm font-semibold text-white">Применяем стратегию...</span>
     </div>
   </div>
+  </div>
 
-  <div class="mt-16 max-w-4xl mx-auto px-4">
+
+<div x-show="activeTab === 'achievements'" x-transition class="animate-fade-in mb-16">
+      <h2 class="text-3xl font-black text-white tracking-tight flex items-center gap-4 mb-10">
+         <i class="fa-solid fa-medal text-amber-500"></i> Коллекция наград
+      </h2>
+      <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-6">
+          {% for ach in all_achievements %}
+          {% set is_earned = ach.id in earned_ids %}
+
+          {# Расчет прогресса на основе текущей статистики пользователя #}
+          {% set current_val = 0 %}
+          {% if ach.condition_type == 'calls' %}{% set current_val = amo_stat.calls_count %}
+          {% elif ach.condition_type == 'mins' %}{% set current_val = amo_stat.minutes_talked %}
+          {% elif ach.condition_type == 'conv' %}{% set current_val = amo_stat.conversion %}{% endif %}
+
+          {% set progress_percent = [(current_val / ach.condition_value * 100), 100]|min if ach.condition_value > 0 else 0 %}
+
+          <div class="group relative bg-white/5 border {{ 'border-amber-500/30 shadow-[0_0_20px_rgba(245,158,11,0.1)]' if is_earned else 'border-white/5' }} rounded-[40px] p-8 flex flex-col items-center transition-all hover:-translate-y-2 overflow-hidden">
+
+              {# Иконка с состоянием неактивности #}
+              <div class="w-20 h-20 rounded-[28px] {{ 'bg-gradient-to-br from-amber-400 to-orange-600 text-black shadow-amber-500/20' if is_earned else 'bg-white/5 text-white/20' }} flex items-center justify-center text-4xl shadow-2xl mb-5 transition-all group-hover:scale-110">
+                  <i class="fa-solid {{ ach.icon_code }}"></i>
+              </div>
+
+              <div class="font-black {{ 'text-white' if is_earned else 'text-white/30' }} text-sm text-center mb-2 line-clamp-2 h-10">{{ ach.name }}</div>
+
+              {% if is_earned %}
+                  <div class="text-amber-500/60 text-[9px] text-center font-black uppercase tracking-widest">Получено</div>
+              {% else %}
+                  {# Шкала прогресса для невыполненных #}
+                  <div class="w-full space-y-2">
+                      <div class="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                          <div class="h-full bg-cyan-500/50" style="width: {{ progress_percent }}%"></div>
+                      </div>
+                      <div class="text-[8px] text-white/20 text-center font-bold uppercase tracking-tighter">
+                          Осталось: {{ [ach.condition_value - current_val, 0]|max|round(1) }}
+                          {{ 'зв.' if ach.condition_type == 'calls' else 'мин.' if ach.condition_type == 'mins' else '%' }}
+                      </div>
+                  </div>
+              {% endif %}
+
+              {# Всплывающая подсказка при наведении #}
+              <div class="absolute inset-0 p-6 opacity-0 group-hover:opacity-100 transition-opacity bg-black/95 rounded-[40px] flex flex-col items-center justify-center text-center backdrop-blur-md">
+                   <div class="text-[9px] font-black {{ 'text-amber-500' if is_earned else 'text-cyan-400' }} uppercase tracking-widest mb-2">
+                       {{ 'Цель достигнута!' if is_earned else 'Как получить?' }}
+                   </div>
+                   <p class="text-[11px] text-white/70 leading-tight mb-3">{{ ach.description }}</p>
+                   {% if not is_earned %}
+                   <div class="text-[9px] p-2 bg-white/5 rounded-xl text-white/40 border border-white/10">
+                       Нужно: <span class="text-white">{{ ach.condition_value }}</span>
+                       {{ 'звонков' if ach.condition_type == 'calls' else 'минут разговора' if ach.condition_type == 'mins' else '% конверсии' }}
+                   </div>
+                   {% endif %}
+              </div>
+          </div>
+          {% endfor %}
+      </div>
+  </div>
+
+  <div x-show="activeTab === 'analytics'" x-transition class="animate-fade-in mb-16">
+      <div class="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
+          <div>
+              <h2 class="text-4xl font-black text-white tracking-tight flex items-center gap-4 mb-2">
+                 <i class="fa-solid fa-chart-line text-cyan-400"></i> Аналитика успеха
+              </h2>
+              <p class="text-white/40 text-sm font-bold uppercase tracking-widest">Твои показатели за последние 30 дней</p>
+          </div>
+
+          <template x-if="analytics?.metrics?.best_day">
+              <div class="bg-gradient-to-br from-amber-500/20 to-rose-500/20 border border-amber-500/30 rounded-3xl p-4 flex items-center gap-4 shadow-lg shadow-amber-500/5">
+                  <div class="w-12 h-12 rounded-2xl bg-amber-500 flex items-center justify-center text-black text-xl shadow-inner">
+                      <i class="fa-solid fa-bolt-lightning"></i>
+                  </div>
+                  <div>
+                      <div class="text-[10px] font-black text-amber-500 uppercase tracking-widest">Твой личный рекорд</div>
+                      <div class="text-white font-black text-lg">
+                          <span x-text="analytics.metrics.best_day.won"></span> сделок <span class="text-white/40 font-normal text-sm" x-text="' — ' + analytics.metrics.best_day.date"></span>
+                      </div>
+                  </div>
+              </div>
+          </template>
+      </div>
+
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+          <div class="bg-white/5 border border-white/10 rounded-[32px] p-6 hover:bg-white/10 transition-colors">
+              <div class="text-[10px] font-black text-white/30 uppercase tracking-widest mb-2">Средняя конверсия</div>
+              <div class="text-3xl font-black text-emerald-400" x-text="analytics?.metrics?.averages?.conv + '%'">0%</div>
+          </div>
+          <div class="bg-white/5 border border-white/10 rounded-[32px] p-6 hover:bg-white/10 transition-colors">
+              <div class="text-[10px] font-black text-white/30 uppercase tracking-widest mb-2">Ср. звонков / день</div>
+              <div class="text-3xl font-black text-white" x-text="analytics?.metrics?.averages?.calls">0</div>
+          </div>
+          <div class="bg-white/5 border border-white/10 rounded-[32px] p-6 hover:bg-white/10 transition-colors">
+              <div class="text-[10px] font-black text-white/30 uppercase tracking-widest mb-2">Всего сделок</div>
+              <div class="text-3xl font-black text-white" x-text="analytics?.metrics?.totals?.won">0</div>
+          </div>
+          <div class="bg-white/5 border border-white/10 rounded-[32px] p-6 hover:bg-white/10 transition-colors">
+              <div class="text-[10px] font-black text-white/30 uppercase tracking-widest mb-2">Всего звонков</div>
+              <div class="text-3xl font-black text-white/40" x-text="analytics?.metrics?.totals?.calls">0</div>
+          </div>
+      </div>
+
+      <div class="bg-[#0f121d] border border-white/5 rounded-[40px] p-8 mb-10 relative overflow-hidden">
+          <div class="flex items-center justify-between mb-8">
+              <h3 class="font-black text-white uppercase tracking-widest text-xs">Тренд активности</h3>
+              <div class="flex gap-4">
+                  <div class="flex items-center gap-2 text-[10px] font-bold text-white/40 uppercase">
+                      <div class="w-2 h-2 rounded-full bg-cyan-400"></div> Сделки
+                  </div>
+                  <div class="flex items-center gap-2 text-[10px] font-bold text-white/40 uppercase">
+                      <div class="w-2 h-2 rounded-full bg-white/10"></div> Звонки
+                  </div>
+              </div>
+          </div>
+          <div class="h-[300px]">
+              <canvas id="analyticsChart"></canvas>
+          </div>
+      </div>
+
+      <div x-data="{ open: false }" class="rounded-[40px] border border-white/5 bg-white/5 overflow-hidden backdrop-blur-md">
+          <button @click="open = !open" class="w-full px-8 py-6 flex items-center justify-between hover:bg-white/5 transition-colors">
+              <span class="font-black text-white uppercase tracking-widest text-xs">Детальный лог активности</span>
+              <i class="fa-solid" :class="open ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+          </button>
+
+          <div x-show="open" x-collapse>
+              <table class="w-full text-sm text-left">
+                  <thead class="bg-white/5 text-white/30 uppercase font-black tracking-widest">
+                      <tr>
+                          <th class="px-8 py-7">Дата</th>
+                          <th class="px-8 py-7">Звонки</th>
+                          <th class="px-8 py-7">Минуты</th>
+                          <th class="px-8 py-7">Конверсия</th>
+                          <th class="px-8 py-7 text-right">Сделки</th>
+                      </tr>
+                  </thead>
+                  <tbody class="divide-y divide-white/5 text-white/70">
+                      <template x-for="item in history">
+                          <tr class="hover:bg-white/5 transition-colors group">
+                              <td class="px-8 py-7 font-bold text-white group-hover:text-cyan-400 transition-colors" x-text="item.date"></td>
+                              <td class="px-8 py-7 font-mono" x-text="item.calls"></td>
+                              <td class="px-8 py-7 font-mono" x-text="item.mins"></td>
+                              <td class="px-8 py-7 text-emerald-400 font-black" x-text="item.conv + '%'"></td>
+                              <td class="px-8 py-7 text-right font-black text-white" x-text="item.won"></td>
+                          </tr>
+                      </template>
+                  </tbody>
+              </table>
+          </div>
+      </div>
+  </div>
+
+  <div x-show="activeTab === 'main'" x-transition class="mt-16 max-w-4xl mx-auto px-4 space-y-16">
       <style>
           .feed-timeline { position: relative; padding-left: 2.5rem; }
           .feed-timeline::before { content: ''; position: absolute; left: 0.75rem; top: 0; bottom: 0; width: 2px; background: linear-gradient(to bottom, var(--sj-primary) 0%, transparent 100%); opacity: 0.15; }
@@ -617,6 +804,9 @@
       editName: "{{ current_user.username or '' }}",
       avatarFile: null,
 
+      // Навигация
+      activeTab: 'main', // 'main', 'achievements', 'history'
+
       // Состояние игры
       loading: false,
       currentBuff: null,
@@ -633,6 +823,63 @@
       showRewardModal: {{ 'true' if daily_reward else 'false' }},
       dailyReward: {{ daily_reward | tojson if daily_reward else 'null' }},
       suggestions: {{ suggestions | tojson if suggestions else '[]' }},
+
+      // Аналитика и графики
+      history: [],
+      analytics: null,
+      chart: null,
+
+      async loadAnalytics() {
+          const r = await fetch('/api/user/analytics');
+          if (r.ok) {
+              const data = await r.json();
+              this.history = data.history;
+              this.analytics = data;
+              this.$nextTick(() => this.initChart(data.metrics.charts));
+          }
+      },
+
+      initChart(data) {
+          const ctx = document.getElementById('analyticsChart');
+          if (!ctx) return;
+          if (this.chart) this.chart.destroy();
+
+          this.chart = new Chart(ctx, {
+              type: 'bar',
+              data: {
+                  labels: data.labels,
+                  datasets: [
+                      {
+                          label: 'Сделки',
+                          data: data.won,
+                          backgroundColor: '#22d3ee',
+                          borderRadius: 8,
+                          order: 2
+                      },
+                      {
+                          label: 'Звонки',
+                          data: data.calls,
+                          type: 'line',
+                          borderColor: 'rgba(255,255,255,0.1)',
+                          borderWidth: 2,
+                          pointRadius: 0,
+                          fill: false,
+                          tension: 0.4,
+                          order: 1
+                      }
+                  ]
+              },
+              options: {
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: { legend: { display: false } },
+                  scales: {
+                      y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: 'rgba(255,255,255,0.2)' } },
+                      x: { grid: { display: false }, ticks: { color: 'rgba(255,255,255,0.2)' } }
+                  }
+              }
+          });
+      },
 
       onAvatarSelect(e) {
           this.avatarFile = e.target.files[0];
@@ -675,12 +922,12 @@
 
       initDashboard() {
         this.fetchStatus();
-        this.loadFeed(); // Загрузка ленты
-        this.loadStories(); // Загрузка сторис
+        this.loadFeed();
+        this.loadStories();
+        this.loadAnalytics(); // Заменили loadHistory на loadAnalytics
         if (this.amoLinked) {
             this.syncAmoStats();
         }
-
         // Слушаем обновления через сокеты
         const s = io();
         s.on('new_feed_item', () => {

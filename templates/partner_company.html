@@ -104,7 +104,28 @@
   </div>
 </div>
 
-<div x-data="{tab:'employees'}" class="rounded-2xl border border-[color:var(--sj-border)] bg-white/5 p-5">
+<div x-data="{
+        tab:'employees',
+        async initCounter() {
+            if (!Alpine.store('purchasesCount')) Alpine.store('purchasesCount', 0);
+            const r = await fetch('/shop/partner/pending-purchases/{{ company.id }}');
+            if (r.ok) {
+                const data = await r.json();
+                Alpine.store('purchasesCount', data.length);
+            }
+            const socket = io();
+            socket.emit('join_partner_room', { company_id: {{ company.id }} });
+            socket.on('partner_new_purchase', (data) => {
+                Alpine.store('purchasesCount', (Alpine.store('purchasesCount') || 0) + 1);
+                // Если мы на другой вкладке, покажем тост
+                if (this.tab !== 'purchases') {
+                    Alpine.store('toasts').push({title:'Новый заказ!', text: data.username + ' купил ' + data.item_name, tone:'ok'});
+                }
+            });
+        }
+     }"
+     x-init="initCounter()"
+     class="rounded-2xl border border-[color:var(--sj-border)] bg-white/5 p-5">
 
   <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
     <div class="flex gap-2">
@@ -122,6 +143,14 @@
               :class="tab==='feed' ? 'bg-white/10' : 'bg-white/5 hover:bg-white/10'"
               class="px-4 py-2 rounded-2xl border border-[color:var(--sj-border)] font-semibold transition-colors">
         <i class="fa-solid fa-bullhorn mr-2 text-white/60"></i>Лента
+      </button>
+      <button @click="tab='purchases'"
+              :class="tab==='purchases' ? 'bg-white/10' : 'bg-white/5 hover:bg-white/10'"
+              class="px-4 py-2 rounded-2xl border border-[color:var(--sj-border)] font-semibold transition-colors relative">
+        <i class="fa-solid fa-bell mr-2 text-white/60"></i>Уведомления
+        <template x-if="$store.purchasesCount > 0">
+            <span class="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 rounded-full text-[10px] flex items-center justify-center animate-pulse" x-text="$store.purchasesCount"></span>
+        </template>
       </button>
       <button @click="tab='settings'"
               :class="tab==='settings' ? 'bg-white/10' : 'bg-white/5 hover:bg-white/10'"
@@ -492,6 +521,83 @@
             }
           },
 
+          formatDate(s) {
+            return new Date(s).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+          }
+        }
+      }
+    </script>
+  </div>
+
+  <div x-show="tab==='purchases'" x-data="purchaseManager({{ company.id }})">
+    <div class="max-w-3xl mx-auto space-y-6">
+      <div class="flex items-center justify-between">
+          <h3 class="font-black text-xl text-white tracking-tight flex items-center gap-3">
+             <i class="fa-solid fa-gift text-emerald-500"></i> Ожидают выдачи
+          </h3>
+          <span class="text-[10px] font-black uppercase tracking-[0.2em] text-white/30" x-text="purchases.length + ' активных'"></span>
+      </div>
+
+      <div class="space-y-3">
+          <template x-for="p in purchases" :key="p.id">
+              <div class="p-5 rounded-3xl border border-white/10 bg-white/5 flex items-center justify-between animate-fade-in">
+                  <div class="flex items-center gap-4">
+                      <div class="w-12 h-12 rounded-2xl bg-violet-600/20 border border-violet-500/30 flex items-center justify-center text-violet-400">
+                          <i class="fa-solid fa-shopping-bag"></i>
+                      </div>
+                      <div>
+                          <div class="font-bold text-white text-lg" x-text="p.item_name"></div>
+                          <div class="text-xs text-white/40">
+                              Сотрудник: <span class="text-white/60" x-text="p.username"></span> •
+                              <span x-text="formatDate(p.created_at)"></span>
+                          </div>
+                      </div>
+                  </div>
+                  <button @click="confirmIssue(p.id)"
+                          class="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase text-[10px] tracking-widest transition-all shadow-lg shadow-emerald-600/20">
+                      Выдано
+                  </button>
+              </div>
+          </template>
+
+          <div x-show="purchases.length === 0" class="py-20 text-center opacity-20">
+              <i class="fa-solid fa-check-double text-4xl mb-4"></i>
+              <div class="text-sm font-black uppercase tracking-widest">Все заказы обработаны</div>
+          </div>
+      </div>
+    </div>
+
+    <script>
+      function purchaseManager(companyId) {
+        return {
+          purchases: [],
+          init() {
+            this.load();
+            const socket = io();
+            socket.emit('join_partner_room', { company_id: companyId });
+            socket.on('partner_new_purchase', (data) => {
+                this.load();
+                Alpine.store('toasts').push({title:'Новый заказ!', text: `${data.username} купил ${data.item_name}`, tone:'ok'});
+            });
+          },
+          async load() {
+            try {
+              const r = await fetch(`/shop/partner/pending-purchases/${companyId}`);
+              this.purchases = await r.json();
+              // Синхронизируем счетчик на кнопке при загрузке списка
+              Alpine.store('purchasesCount', this.purchases.length);
+            } catch(e) { console.error(e); }
+          },
+          async confirmIssue(id) {
+            try {
+              const r = await fetch(`/shop/partner/confirm-issue/${id}`, { method: 'POST' });
+              if (r.ok) {
+                this.purchases = this.purchases.filter(x => x.id !== id);
+                Alpine.store('purchasesCount', this.purchases.length);
+                Alpine.store('toasts').push({title:'Успешно', text: 'Статус обновлен', tone:'ok'});
+              }
+            } catch(e) { console.error(e); }
+          },
           formatDate(s) {
             return new Date(s).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
           }
